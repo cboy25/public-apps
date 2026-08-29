@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>設定</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#3d5a6c">
+<link rel="icon" href="icons/icon-192.png">
+<style>
+  :root{
+    --ink:#1c2321;
+    --paper:#f2efe9;
+    --paper-dim:#e6e2d8;
+    --steel:#3d5a6c;
+    --steel-dark:#2b4150;
+    --rust:#b5502f;
+    --line:#c9c2b2;
+    --ok:#4a7856;
+    --mono: "SF Mono","Consolas","Menlo",monospace;
+    --sans: "Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); line-height:1.6;
+  }
+  header{
+    display:flex; align-items:center; gap:10px;
+    border-bottom:1px solid var(--line); background:#fff;
+    padding:calc(10px + var(--safe-t)) 12px 10px;
+  }
+  .back-btn{
+    width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:18px;text-decoration:none;color:var(--ink);
+    flex-shrink:0;
+  }
+  header h1{margin:0; font-size:17px; font-weight:800;}
+
+  .wrap{max-width:520px;margin:0 auto;padding:16px 14px calc(24px + var(--safe-b));}
+
+  .section{
+    background:#fff; border:1px solid var(--line); border-radius:8px;
+    padding:14px; margin-bottom:16px;
+  }
+  .section h2{margin:0 0 4px; font-size:14px;}
+  .section .desc{font-size:12px; color:#75705f; margin:0 0 12px;}
+
+  .field{margin-bottom:14px;}
+  .field:last-child{margin-bottom:0;}
+  .field label{display:block; font-size:13px; font-weight:700; margin-bottom:6px;}
+  .field select{
+    width:100%; font-size:14px; padding:9px 10px; border:1px solid var(--line);
+    border-radius:6px; background:var(--paper); color:var(--ink);
+  }
+  .field .hint{font-size:11.5px; color:#8b8676; margin-top:4px;}
+
+  .preview{
+    font-family:var(--mono); font-size:12px; color:var(--steel-dark);
+    background:var(--paper-dim); border-radius:6px; padding:8px 10px; margin-top:10px;
+  }
+
+  .btn{
+    font-family:var(--sans); font-weight:700; font-size:14px;
+    border:none; border-radius:6px; padding:12px 16px; cursor:pointer;
+    background:var(--steel); color:#fff; width:100%; text-align:center;
+  }
+  .btn:active{background:var(--steel-dark);}
+
+  .status{
+    font-family:var(--mono); font-size:11.5px; padding:8px 10px; border-radius:6px;
+    background:#eef2ee; color:var(--ok); margin-top:10px; display:none; text-align:center;
+  }
+  .status.show{display:block;}
+</style>
+</head>
+<body>
+
+<header>
+  <a class="back-btn" href="record.html" title="戻る">←</a>
+  <h1>設定</h1>
+</header>
+
+<div class="wrap">
+  <div class="section">
+    <h2>写真の圧縮</h2>
+    <p class="desc">現場記録アプリ（record.html）で撮影・添付する写真の圧縮設定です。画質を下げるほどファイルが軽くなり、共有や保存がスムーズになります。</p>
+
+    <div class="field">
+      <label for="qualitySel">画質</label>
+      <select id="qualitySel">
+        <option value="0.9">高画質</option>
+        <option value="0.75">標準</option>
+        <option value="0.6">軽量</option>
+        <option value="0.45">最軽量</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="maxDimSel">最大サイズ</label>
+      <select id="maxDimSel">
+        <option value="2000">2000px</option>
+        <option value="1600">1600px</option>
+        <option value="1200">1200px</option>
+        <option value="800">800px</option>
+      </select>
+      <div class="hint">写真の縦横の最大ピクセル数。数値が小さいほど軽くなりますが、拡大時に粗くなります。</div>
+    </div>
+
+    <div class="preview" id="preview"></div>
+  </div>
+
+  <button class="btn" id="saveBtn">保存する</button>
+  <div class="status" id="statusMsg">設定を保存しました</div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const DEFAULT_SETTINGS = { quality: 0.75, maxDim: 1600 };
+
+function loadSettings(){
+  try{
+    const saved = JSON.parse(localStorage.getItem('wlo_settings'));
+    if(saved && typeof saved.quality === 'number' && typeof saved.maxDim === 'number') return saved;
+  }catch(err){}
+  return DEFAULT_SETTINGS;
+}
+
+function applyToForm(settings){
+  $('qualitySel').value = String(settings.quality);
+  $('maxDimSel').value = String(settings.maxDim);
+  updatePreview();
+}
+
+function updatePreview(){
+  const labelMap = {'0.9':'高画質','0.75':'標準','0.6':'軽量','0.45':'最軽量'};
+  const q = $('qualitySel').value;
+  const d = $('maxDimSel').value;
+  $('preview').textContent = `現在の設定：${labelMap[q] || q} ／ 最大 ${d}px`;
+}
+
+applyToForm(loadSettings());
+$('qualitySel').addEventListener('change', updatePreview);
+$('maxDimSel').addEventListener('change', updatePreview);
+
+$('saveBtn').addEventListener('click', ()=>{
+  const settings = {
+    quality: parseFloat($('qualitySel').value),
+    maxDim: parseInt($('maxDimSel').value, 10)
+  };
+  localStorage.setItem('wlo_settings', JSON.stringify(settings));
+  const el = $('statusMsg');
+  el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'), 2500);
+});
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>

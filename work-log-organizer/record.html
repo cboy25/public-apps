@@ -191,6 +191,7 @@
       <h1>現場記録</h1>
     </div>
     <div class="header-actions">
+      <a class="icon-btn" href="settings.html" title="設定" style="text-decoration:none;">⚙️</a>
       <button class="icon-btn" id="openSheetBtn" title="保存・共有">📤</button>
     </div>
   </div>
@@ -240,7 +241,15 @@ let pendingPhotos = [];  // dataUrls waiting to be attached to the next entry
 let addPhotoTargetId = null; // when set, next captured photo attaches to this existing entry instead of composing a new one
 
 const $ = id => document.getElementById(id);
-const MAX_DIM = 1600, QUALITY = 0.75;
+
+const DEFAULT_SETTINGS = { quality: 0.75, maxDim: 1600 };
+function loadSettings(){
+  try{
+    const saved = JSON.parse(localStorage.getItem('wlo_settings'));
+    if(saved && typeof saved.quality === 'number' && typeof saved.maxDim === 'number') return saved;
+  }catch(err){}
+  return DEFAULT_SETTINGS;
+}
 
 if(!$('logDate').value) $('logDate').value = new Date().toISOString().slice(0,10);
 
@@ -250,22 +259,23 @@ function nowHM(){
 }
 
 function compressImage(file){
+  const { quality, maxDim } = loadSettings();
   return new Promise((resolve, reject)=>{
     const reader = new FileReader();
     reader.onload = ev=>{
       const img = new Image();
       img.onload = ()=>{
         let { width, height } = img;
-        if(width > MAX_DIM || height > MAX_DIM){
-          if(width >= height){ height = Math.round(height * MAX_DIM / width); width = MAX_DIM; }
-          else { width = Math.round(width * MAX_DIM / height); height = MAX_DIM; }
+        if(width > maxDim || height > maxDim){
+          if(width >= height){ height = Math.round(height * maxDim / width); width = maxDim; }
+          else { width = Math.round(width * maxDim / height); height = maxDim; }
         }
         const canvas = document.createElement('canvas');
         canvas.width = width; canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx.fillStyle = '#fff'; ctx.fillRect(0,0,width,height);
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', QUALITY));
+        resolve(canvas.toDataURL('image/jpeg', quality));
       };
       img.onerror = () => reject(new Error('decode failed'));
       img.src = ev.target.result;
@@ -496,17 +506,43 @@ $('saveBtn').addEventListener('click', ()=>{
   showStatus('保存しました');
 });
 
+// LINEなどのアプリはセキュリティ上 .html ファイルの共有を受け付けないことが多いため、
+// 共有は「テキスト＋写真（画像ファイル）」の組み合わせで行う（画像とテキストはほぼ全アプリで共有可能）。
+function buildShareText(title, date){
+  let text = `${title}（${date}）\n\n`;
+  entries.forEach((en,i)=>{
+    text += `${en.time || '記録' + (i+1)} ${en.text}\n`;
+  });
+  return text.trim();
+}
+
+async function dataUrlToFile(dataUrl, filename){
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  return new File([blob], filename, {type: blob.type || 'image/jpeg'});
+}
+
 $('shareBtn').addEventListener('click', async ()=>{
   if(!entries.length){ showStatus('記録がありません', true); return; }
   const {title, date} = getMeta();
-  const html = buildReportHtml(title, date);
-  const file = new File([html], buildFilename(title, date), {type:'text/html'});
-  if(navigator.canShare && navigator.canShare({files:[file]})){
-    try{ await navigator.share({files:[file], title}); }
-    catch(err){ if(err.name !== 'AbortError') showStatus('共有できませんでした', true); }
-  } else {
-    download(file.name, html, 'text/html');
+  const text = buildShareText(title, date);
+  const allPhotoUrls = entries.flatMap(en => en.photos);
+
+  if(!navigator.share){
+    download(buildFilename(title, date), buildReportHtml(title, date), 'text/html');
     showStatus('この端末は直接共有に対応していないため、ファイルとして保存しました');
+    return;
+  }
+
+  try{
+    const files = await Promise.all(allPhotoUrls.map((url,i)=> dataUrlToFile(url, `photo${i+1}.jpg`)));
+    if(files.length && navigator.canShare && navigator.canShare({files})){
+      await navigator.share({title, text, files});
+    } else {
+      await navigator.share({title, text});
+    }
+  }catch(err){
+    if(err.name !== 'AbortError') showStatus('共有できませんでした', true);
   }
 });
 

@@ -1,8 +1,8 @@
 {
-  "name": "作業ログ整理ツール",
-  "short_name": "作業ログ",
-  "description": "トーク履歴と写真を突き合わせて1枚の作業記録に整理するツール",
-  "start_url": "./index.html",
+  "name": "現場記録",
+  "short_name": "現場記録",
+  "description": "スマホでその場から作業ログ・写真を記録して整理するツール",
+  "start_url": "./record.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

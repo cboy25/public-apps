@@ -760,22 +760,45 @@ $('exportHtmlBtn').addEventListener('click', ()=>{
   showStatus('HTMLレポートを保存しました（このファイルは後で読み込んで再編集できます）');
 });
 
+// LINEなどのアプリはセキュリティ上 .html ファイルの共有を受け付けないことが多いため、
+// 共有は「テキスト＋写真（画像ファイル）」の組み合わせで行う（画像とテキストはほぼ全アプリで共有可能）。
+function buildShareText(title, date){
+  let text = `${title}（${date}）\n\n`;
+  entries.forEach((en,i)=>{
+    text += `${en.time || '記録' + (i+1)} ${en.text}\n`;
+  });
+  return text.trim();
+}
+
+async function dataUrlToFile(dataUrl, filename){
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  return new File([blob], filename, {type: blob.type || 'image/jpeg'});
+}
+
 $('shareHtmlBtn').addEventListener('click', async ()=>{
   if(!entries.length){ showStatus('記録がありません', true); return; }
   const {title, date} = getMeta();
-  const html = buildReportHtml(title, date);
-  const file = new File([html], buildFilename(title, date), {type:'text/html'});
+  const text = buildShareText(title, date);
+  const usedPhotoIds = new Set(entries.flatMap(en => en.photos));
+  const usedPhotoUrls = photos.filter(p => usedPhotoIds.has(p.id)).map(p => p.dataUrl);
 
-  if(navigator.canShare && navigator.canShare({files:[file]})){
-    try{
-      await navigator.share({files:[file], title});
-    }catch(err){
-      if(err.name !== 'AbortError') showStatus('共有できませんでした', true);
-    }
-  } else {
-    // 共有APIが使えない場合（PC等）はダウンロードにフォールバック
-    download(file.name, html, 'text/html');
+  if(!navigator.share){
+    const html = buildReportHtml(title, date);
+    download(buildFilename(title, date), html, 'text/html');
     showStatus('この端末は直接共有に対応していないため、ファイルとして保存しました');
+    return;
+  }
+
+  try{
+    const files = await Promise.all(usedPhotoUrls.map((url,i)=> dataUrlToFile(url, `photo${i+1}.jpg`)));
+    if(files.length && navigator.canShare && navigator.canShare({files})){
+      await navigator.share({title, text, files});
+    } else {
+      await navigator.share({title, text});
+    }
+  }catch(err){
+    if(err.name !== 'AbortError') showStatus('共有できませんでした', true);
   }
 });
 

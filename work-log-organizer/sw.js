@@ -1,7 +1,8 @@
-const CACHE_NAME = 'work-log-organizer-v2';
+const CACHE_NAME = 'work-log-organizer-v3';
 const ASSETS = [
   './index.html',
   './record.html',
+  './settings.html',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png'
