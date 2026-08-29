@@ -191,6 +191,7 @@
       <h1>現場記録</h1>
     </div>
     <div class="header-actions">
+      <button class="icon-btn" id="resetBtn" title="新規作成">🆕</button>
       <a class="icon-btn" href="settings.html" title="設定" style="text-decoration:none;">⚙️</a>
       <button class="icon-btn" id="openSheetBtn" title="保存・共有">📤</button>
     </div>
@@ -229,8 +230,10 @@
   <div class="row-btns">
     <button class="btn" id="saveBtn">レポートとして保存（HTML）</button>
     <button class="btn rust" id="shareBtn">LINE・メールなどで共有</button>
+    <button class="btn secondary" id="pdfBtn">PDFで保存・共有</button>
     <button class="btn secondary" id="closeSheetBtn">閉じる</button>
   </div>
+  <div class="hint" style="font-size:11.5px;color:#8b8676;margin-top:10px;">PDFは印刷画面が開きます。「PDFとして保存」を選ぶとPDFファイルになり、そのまま共有もできます。</div>
   <div class="status" id="statusMsg"></div>
 </div>
 
@@ -544,6 +547,41 @@ $('shareBtn').addEventListener('click', async ()=>{
   }catch(err){
     if(err.name !== 'AbortError') showStatus('共有できませんでした', true);
   }
+});
+
+// PDFはブラウザの印刷機能を使う（外部ライブラリ不要・オフラインでも動く）。
+// 印刷画面で「PDFとして保存」を選べばPDFファイルになり、そのまま共有もできる。
+$('pdfBtn').addEventListener('click', ()=>{
+  if(!entries.length){ showStatus('記録がありません', true); return; }
+  const {title, date} = getMeta();
+  const html = buildReportHtml(title, date);
+  const blob = new Blob([html], {type:'text/html'});
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if(!win){
+    showStatus('印刷画面を開けませんでした。ポップアップブロックを確認してください', true);
+    URL.revokeObjectURL(url);
+    return;
+  }
+  win.addEventListener('load', ()=>{
+    win.print();
+    setTimeout(()=> URL.revokeObjectURL(url), 60000);
+  });
+});
+
+// ---------- reset (start a new log) ----------
+$('resetBtn').addEventListener('click', ()=>{
+  if(entries.length && !confirm('現在の記録をすべて削除して新規作成しますか？この操作は元に戻せません。')) return;
+  entries = [];
+  entrySeq = 0;
+  pendingPhotos = [];
+  addPhotoTargetId = null;
+  $('logTitle').value = '';
+  $('logDate').value = new Date().toISOString().slice(0,10);
+  $('composeText').value = '';
+  renderPending();
+  renderFeed();
+  showStatus('新規作成しました');
 });
 
 // ---------- import (continue editing) ----------
