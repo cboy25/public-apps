@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0">
+<title>現場記録</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#3d5a6c">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="現場記録">
+<style>
+  :root{
+    --ink:#1c2321;
+    --paper:#f2efe9;
+    --paper-dim:#e6e2d8;
+    --steel:#3d5a6c;
+    --steel-dark:#2b4150;
+    --rust:#b5502f;
+    --line:#c9c2b2;
+    --ok:#4a7856;
+    --mono: "SF Mono","Consolas","Menlo",monospace;
+    --sans: "Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); line-height:1.5;
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+
+  /* ---------- header ---------- */
+  header{
+    flex:0 0 auto;
+    border-bottom:1px solid var(--line);
+    background:#fff;
+    padding:calc(10px + var(--safe-t)) 12px 8px;
+  }
+  header .top-row{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+  }
+  header .eyebrow{
+    font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--rust);
+    text-transform:uppercase;
+  }
+  header h1{margin:1px 0 0; font-size:17px; font-weight:800;}
+  .icon-btn{
+    width:38px;height:38px; border-radius:50%; border:1px solid var(--line);
+    background:#fff; display:flex; align-items:center; justify-content:center;
+    font-size:17px; cursor:pointer; flex-shrink:0;
+  }
+  .icon-btn:active{background:var(--paper-dim);}
+  .header-actions{display:flex; gap:6px;}
+
+  .meta-row{
+    display:flex; gap:6px; margin-top:8px;
+  }
+  .meta-row input{
+    font-size:13px; padding:7px 9px; border:1px solid var(--line); border-radius:6px;
+    background:var(--paper); color:var(--ink); min-width:0;
+  }
+  .meta-row input[type=text]{flex:1.4;}
+  .meta-row input[type=date]{flex:1;}
+
+  .link-line{
+    margin-top:6px; font-size:11.5px; color:var(--steel); text-decoration:underline;
+    display:inline-block; cursor:pointer;
+  }
+
+  /* ---------- feed ---------- */
+  #feed{
+    flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    padding:12px 12px 16px;
+  }
+  .empty-hint{
+    text-align:center; color:#8b8676; font-size:13px; margin-top:40px; padding:0 20px;
+  }
+  .entry{
+    background:#fff; border:1px solid var(--line); border-left:4px solid var(--steel);
+    border-radius:8px; padding:10px 12px; margin-bottom:10px;
+  }
+  .entry-top{
+    display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px;
+  }
+  .entry-time{
+    font-family:var(--mono); font-size:12px; font-weight:700; color:var(--steel-dark);
+    background:var(--paper-dim); border-radius:4px; padding:3px 7px; border:none; cursor:pointer;
+  }
+  .entry-time-input{
+    font-family:var(--mono); font-size:12px; padding:2px 4px; border:1px solid var(--steel); border-radius:4px;
+  }
+  .entry-del{
+    border:none; background:none; color:#a89f8c; font-size:15px; cursor:pointer; padding:4px 6px;
+  }
+  .entry-del:active{color:var(--rust);}
+  .entry-text{
+    width:100%; border:none; background:transparent; font-family:var(--sans); font-size:14.5px;
+    resize:none; min-height:22px; padding:0; white-space:pre-wrap;
+  }
+  .entry-photos{display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;}
+  .entry-photos img{
+    width:64px;height:64px;object-fit:cover;border-radius:6px; border:1px solid var(--line); cursor:zoom-in;
+  }
+  .entry-addphoto{
+    width:64px;height:64px;border-radius:6px;border:1px dashed var(--line);
+    display:flex;align-items:center;justify-content:center;font-size:20px;color:#a8a290;
+    background:none; cursor:pointer;
+  }
+
+  /* ---------- compose bar ---------- */
+  #compose{
+    flex:0 0 auto; border-top:1px solid var(--line); background:#fff;
+    padding:8px 10px calc(8px + var(--safe-b));
+  }
+  #pendingPhotos{
+    display:flex; gap:6px; margin-bottom:6px; flex-wrap:wrap;
+  }
+  #pendingPhotos .chip{position:relative; width:52px;height:52px;}
+  #pendingPhotos img{width:100%;height:100%;object-fit:cover;border-radius:6px;border:1px solid var(--line);}
+  #pendingPhotos .rm{
+    position:absolute; top:-6px; right:-6px; width:18px;height:18px;border-radius:50%;
+    background:var(--rust); color:#fff; border:2px solid #fff; font-size:11px; line-height:1;
+    display:flex;align-items:center;justify-content:center; cursor:pointer;
+  }
+  .compose-row{display:flex; align-items:center; gap:6px;}
+  .compose-row button.round{
+    width:42px;height:42px;border-radius:50%; border:1px solid var(--line); background:var(--paper);
+    font-size:19px; display:flex;align-items:center;justify-content:center; cursor:pointer; flex-shrink:0;
+  }
+  .compose-row button.round:active{background:var(--paper-dim);}
+  #composeText{
+    flex:1; min-width:0; font-size:14.5px; padding:10px 12px; border:1px solid var(--line);
+    border-radius:20px; background:var(--paper); font-family:var(--sans);
+  }
+  #sendBtn{
+    width:42px;height:42px;border-radius:50%; border:none; background:var(--steel); color:#fff;
+    font-size:18px; display:flex;align-items:center;justify-content:center; cursor:pointer; flex-shrink:0;
+  }
+  #sendBtn:active{background:var(--steel-dark);}
+  #sendBtn:disabled{background:#c7c2b4;}
+
+  /* ---------- lightbox ---------- */
+  #lb{
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,.88); z-index:999;
+    align-items:center; justify-content:center; padding:24px; cursor:zoom-out;
+  }
+  #lb.show{display:flex;}
+  #lb img{max-width:100%;max-height:100%;object-fit:contain;border-radius:4px;}
+
+  /* ---------- output sheet ---------- */
+  #sheetBackdrop{
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:900;
+  }
+  #sheetBackdrop.show{display:block;}
+  #sheet{
+    position:fixed; left:0; right:0; bottom:-100%; z-index:901; background:#fff;
+    border-radius:14px 14px 0 0; padding:16px 16px calc(16px + var(--safe-b));
+    transition:bottom .2s ease; box-shadow:0 -4px 20px rgba(0,0,0,.15);
+  }
+  #sheet.show{bottom:0;}
+  #sheet h3{margin:0 0 12px; font-size:15px;}
+  #sheet .row-btns{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
+  .btn{
+    font-family:var(--sans); font-weight:700; font-size:13.5px;
+    border:none; border-radius:6px; padding:11px 16px; cursor:pointer;
+    background:var(--steel); color:#fff; flex:1; min-width:120px; text-align:center;
+  }
+  .btn.rust{background:var(--rust);}
+  .btn.secondary{background:transparent; color:var(--steel); border:1px solid var(--steel);}
+  .btn:disabled{background:#c7c2b4; color:#fff;}
+
+  .status{
+    font-family:var(--mono); font-size:11.5px; padding:8px 10px; border-radius:6px;
+    background:#eef2ee; color:var(--ok); margin-top:10px; display:none;
+  }
+  .status.warn{background:#fbf0ec; color:var(--rust);}
+  .status.show{display:block;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="top-row">
+    <div>
+      <div class="eyebrow">Field Log / 現場記録</div>
+      <h1>現場記録</h1>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" id="openSheetBtn" title="保存・共有">📤</button>
+    </div>
+  </div>
+  <div class="meta-row">
+    <input type="text" id="logTitle" placeholder="作業名（例：1号機 ベアリング交換）">
+    <input type="date" id="logDate">
+  </div>
+  <span class="link-line" id="importLink">＋ 保存済みの記録を読み込んで続きから</span>
+  <input type="file" id="importFile" accept=".html,.htm" style="display:none;">
+</header>
+
+<div id="feed">
+  <div class="empty-hint" id="emptyHint">下のボタンから写真を撮るかメモを書いて、記録を始めましょう。</div>
+</div>
+
+<div id="compose">
+  <div id="pendingPhotos"></div>
+  <div class="compose-row">
+    <button class="round" id="cameraBtn" title="写真を撮る">📷</button>
+    <button class="round" id="galleryBtn" title="ギャラリーから選ぶ">🖼</button>
+    <input type="text" id="composeText" placeholder="ひとことメモ...">
+    <button id="sendBtn" title="記録する">➤</button>
+  </div>
+</div>
+
+<input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
+<input type="file" id="galleryInput" accept="image/*" multiple style="display:none;">
+<input type="file" id="entryPhotoInput" accept="image/*" capture="environment" style="display:none;">
+
+<div id="lb" onclick="this.classList.remove('show')"><img id="lbImg" src="" alt=""></div>
+
+<div id="sheetBackdrop"></div>
+<div id="sheet">
+  <h3>記録として出力</h3>
+  <div class="row-btns">
+    <button class="btn" id="saveBtn">レポートとして保存（HTML）</button>
+    <button class="btn rust" id="shareBtn">LINE・メールなどで共有</button>
+    <button class="btn secondary" id="closeSheetBtn">閉じる</button>
+  </div>
+  <div class="status" id="statusMsg"></div>
+</div>
+
+<script>
+let entries = [];        // {id, time:'HH:MM', text, photos:[dataUrl,...]}
+let entrySeq = 0;
+let pendingPhotos = [];  // dataUrls waiting to be attached to the next entry
+let addPhotoTargetId = null; // when set, next captured photo attaches to this existing entry instead of composing a new one
+
+const $ = id => document.getElementById(id);
+const MAX_DIM = 1600, QUALITY = 0.75;
+
+if(!$('logDate').value) $('logDate').value = new Date().toISOString().slice(0,10);
+
+function nowHM(){
+  const d = new Date();
+  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+
+function compressImage(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ev=>{
+      const img = new Image();
+      img.onload = ()=>{
+        let { width, height } = img;
+        if(width > MAX_DIM || height > MAX_DIM){
+          if(width >= height){ height = Math.round(height * MAX_DIM / width); width = MAX_DIM; }
+          else { width = Math.round(width * MAX_DIM / height); height = MAX_DIM; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0,0,width,height);
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', QUALITY));
+      };
+      img.onerror = () => reject(new Error('decode failed'));
+      img.src = ev.target.result;
+    };
+    reader.onerror = () => reject(new Error('read failed'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function showStatus(msg, isWarn){
+  const el = $('statusMsg');
+  el.textContent = msg;
+  el.classList.toggle('warn', !!isWarn);
+  el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'), 3500);
+}
+
+// ---------- compose: photo capture ----------
+$('cameraBtn').addEventListener('click', ()=>{ addPhotoTargetId = null; $('cameraInput').click(); });
+$('galleryBtn').addEventListener('click', ()=>{ addPhotoTargetId = null; $('galleryInput').click(); });
+
+async function handleIncomingFiles(files){
+  for(const f of files){
+    try{
+      const dataUrl = await compressImage(f);
+      if(addPhotoTargetId){
+        const en = entries.find(e=>e.id===addPhotoTargetId);
+        if(en) en.photos.push(dataUrl);
+      } else {
+        pendingPhotos.push(dataUrl);
+      }
+    }catch(err){
+      showStatus('写真の読み込みに失敗しました', true);
+    }
+  }
+  if(addPhotoTargetId){ renderFeed(); addPhotoTargetId = null; }
+  else renderPending();
+}
+
+$('cameraInput').addEventListener('change', e=>{
+  const files = Array.from(e.target.files);
+  e.target.value = '';
+  if(files.length) handleIncomingFiles(files);
+});
+$('galleryInput').addEventListener('change', e=>{
+  const files = Array.from(e.target.files);
+  e.target.value = '';
+  if(files.length) handleIncomingFiles(files);
+});
+$('entryPhotoInput').addEventListener('change', e=>{
+  const files = Array.from(e.target.files);
+  e.target.value = '';
+  if(files.length) handleIncomingFiles(files);
+});
+
+function renderPending(){
+  const wrap = $('pendingPhotos');
+  wrap.innerHTML = '';
+  pendingPhotos.forEach((dataUrl, idx)=>{
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.innerHTML = `<img src="${dataUrl}"><span class="rm">×</span>`;
+    chip.querySelector('.rm').addEventListener('click', ()=>{
+      pendingPhotos.splice(idx,1);
+      renderPending();
+    });
+    wrap.appendChild(chip);
+  });
+}
+
+// ---------- compose: send ----------
+function commitEntry(){
+  const text = $('composeText').value.trim();
+  if(!text && pendingPhotos.length===0) return;
+  entries.push({ id:'e'+(entrySeq++), time: nowHM(), text, photos: pendingPhotos.slice() });
+  pendingPhotos = [];
+  $('composeText').value = '';
+  renderPending();
+  renderFeed();
+  const feed = $('feed');
+  feed.scrollTop = feed.scrollHeight;
+}
+$('sendBtn').addEventListener('click', commitEntry);
+$('composeText').addEventListener('keydown', e=>{
+  if(e.key === 'Enter'){ e.preventDefault(); commitEntry(); }
+});
+
+// ---------- feed ----------
+function renderFeed(){
+  const feed = $('feed');
+  feed.innerHTML = '';
+  if(!entries.length){
+    feed.innerHTML = '<div class="empty-hint" id="emptyHint">下のボタンから写真を撮るかメモを書いて、記録を始めましょう。</div>';
+    return;
+  }
+  entries.forEach(en=>{
+    const div = document.createElement('div');
+    div.className = 'entry';
+
+    const photosHtml = en.photos.map(url => `<img src="${url}">`).join('');
+
+    div.innerHTML = `
+      <div class="entry-top">
+        <button class="entry-time">${en.time}</button>
+        <button class="entry-del" title="削除">🗑</button>
+      </div>
+      <textarea class="entry-text" rows="1" placeholder="メモを入力...">${esc(en.text)}</textarea>
+      <div class="entry-photos">
+        ${photosHtml}
+        <button class="entry-addphoto" title="写真を追加">＋</button>
+      </div>
+    `;
+
+    const timeBtn = div.querySelector('.entry-time');
+    timeBtn.addEventListener('click', ()=>{
+      const input = document.createElement('input');
+      input.type = 'time'; input.className = 'entry-time-input'; input.value = en.time;
+      timeBtn.replaceWith(input);
+      input.focus();
+      const commit = ()=>{ en.time = input.value || en.time; renderFeed(); };
+      input.addEventListener('blur', commit);
+      input.addEventListener('change', commit);
+    });
+
+    const ta = div.querySelector('.entry-text');
+    ta.addEventListener('input', ()=>{
+      en.text = ta.value;
+      ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px';
+    });
+    requestAnimationFrame(()=>{ ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; });
+
+    div.querySelector('.entry-del').addEventListener('click', ()=>{
+      if(!confirm('この記録を削除しますか？')) return;
+      entries = entries.filter(x=>x.id!==en.id);
+      renderFeed();
+    });
+
+    div.querySelector('.entry-addphoto').addEventListener('click', ()=>{
+      addPhotoTargetId = en.id;
+      $('entryPhotoInput').click();
+    });
+
+    div.querySelectorAll('.entry-photos img').forEach(img=>{
+      img.addEventListener('click', ()=>{
+        $('lbImg').src = img.src;
+        $('lb').classList.add('show');
+      });
+    });
+
+    feed.appendChild(div);
+  });
+}
+
+// ---------- output sheet ----------
+$('openSheetBtn').addEventListener('click', ()=>{
+  $('sheetBackdrop').classList.add('show');
+  $('sheet').classList.add('show');
+});
+function closeSheet(){
+  $('sheetBackdrop').classList.remove('show');
+  $('sheet').classList.remove('show');
+}
+$('closeSheetBtn').addEventListener('click', closeSheet);
+$('sheetBackdrop').addEventListener('click', closeSheet);
+
+function getMeta(){
+  const title = $('logTitle').value.trim() || '現場記録';
+  const date = $('logDate').value || new Date().toISOString().slice(0,10);
+  return {title, date};
+}
+
+function buildFilename(title, date){
+  const now = new Date();
+  const hm = String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0') + String(now.getSeconds()).padStart(2,'0');
+  return `${date}_${title}_${hm}.html`;
+}
+
+function buildReportHtml(title, date){
+  const jsonStr = JSON.stringify({title, date, entries}).replace(/</g, '\\u003c');
+  const body = entries.map((en,i)=>{
+    const imgs = en.photos.map(url =>
+      `<img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:4px;cursor:zoom-in;" onclick="openLB(this.src)">`
+    ).join('');
+    const photoBlock = en.photos.length
+      ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;margin-top:8px;">${imgs}</div>`
+      : '';
+    return `<section style="border-left:4px solid #3d5a6c;padding:10px 14px;margin-bottom:14px;background:#fdfcfa;border:1px solid #c9c2b2;border-radius:2px;">
+      <div style="font-family:monospace;font-size:12px;color:#75705f;font-weight:bold;">${en.time || ('記録 ' + (i+1))}</div>
+      <div style="white-space:pre-wrap;font-size:14px;margin:4px 0 0;">${esc(en.text)}</div>
+      ${photoBlock}
+    </section>`;
+  }).join('\n');
+
+  return `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+<title>${title}</title>
+<style>body{font-family:"Hiragino Kaku Gothic ProN",sans-serif;background:#f2efe9;color:#1c2321;max-width:720px;margin:0 auto;padding:24px 16px;}
+h1{border-bottom:3px solid #1c2321;padding-bottom:10px;}
+.meta{font-family:monospace;font-size:12px;color:#75705f;margin-bottom:20px;}
+#lb{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:999;align-items:center;justify-content:center;padding:24px;cursor:zoom-out;}
+#lb.show{display:flex;}
+#lb img{max-width:100%;max-height:100%;object-fit:contain;border-radius:4px;}
+@media print{body{background:#fff;} #lb{display:none !important;}}
+</style></head><body>
+<h1>${title}</h1>
+<div class="meta">日付：${date}　｜　出力：現場記録アプリ（このファイルはこのアプリで読み込んで再編集できます）</div>
+<div id="report">${body}</div>
+<div id="lb" onclick="this.classList.remove('show')"><img id="lbImg" src="" alt=""></div>
+<script>function openLB(src){document.getElementById('lbImg').src=src;document.getElementById('lb').classList.add('show');}<\/script>
+<script type="application/json" id="worklogData">${jsonStr}<\/script>
+</body></html>`;
+}
+
+function download(filename, content, mime){
+  const blob = new Blob([content], {type:mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+$('saveBtn').addEventListener('click', ()=>{
+  if(!entries.length){ showStatus('記録がありません', true); return; }
+  const {title, date} = getMeta();
+  download(buildFilename(title, date), buildReportHtml(title, date), 'text/html');
+  showStatus('保存しました');
+});
+
+$('shareBtn').addEventListener('click', async ()=>{
+  if(!entries.length){ showStatus('記録がありません', true); return; }
+  const {title, date} = getMeta();
+  const html = buildReportHtml(title, date);
+  const file = new File([html], buildFilename(title, date), {type:'text/html'});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file], title}); }
+    catch(err){ if(err.name !== 'AbortError') showStatus('共有できませんでした', true); }
+  } else {
+    download(file.name, html, 'text/html');
+    showStatus('この端末は直接共有に対応していないため、ファイルとして保存しました');
+  }
+});
+
+// ---------- import (continue editing) ----------
+function nextSeq(items){
+  return 1 + items.reduce((mx, it)=> Math.max(mx, parseInt(String(it.id).slice(1), 10) || 0), 0);
+}
+$('importLink').addEventListener('click', ()=> $('importFile').click());
+$('importFile').addEventListener('change', e=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  if(entries.length && !confirm('現在の記録は上書きされます。読み込みを続けますか？')){
+    e.target.value = ''; return;
+  }
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    try{
+      const html = ev.target.result;
+      const m = html.match(/<script type="application\/json" id="worklogData">([\s\S]*?)<\/script>/);
+      if(!m) throw new Error('no-data');
+      const data = JSON.parse(m[1]);
+      entries = Array.isArray(data.entries) ? data.entries : [];
+      entrySeq = nextSeq(entries);
+      $('logTitle').value = data.title || '';
+      $('logDate').value = data.date || '';
+      renderFeed();
+      showStatus('記録を読み込みました。続きから記録できます。');
+    }catch(err){
+      showStatus('読み込みに失敗しました。このアプリで出力したHTMLファイルを選択してください', true);
+    }
+  };
+  reader.onerror = () => showStatus('ファイルの読み込みに失敗しました', true);
+  reader.readAsText(f, 'UTF-8');
+  e.target.value = '';
+});
+
+renderFeed();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>

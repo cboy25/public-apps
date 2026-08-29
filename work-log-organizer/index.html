@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>作業ログ整理ツール</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#3d5a6c">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="作業ログ">
+<style>
+  :root{
+    --ink:#1c2321;
+    --paper:#f2efe9;
+    --paper-dim:#e6e2d8;
+    --steel:#3d5a6c;
+    --steel-dark:#2b4150;
+    --rust:#b5502f;
+    --line:#c9c2b2;
+    --ok:#4a7856;
+    --mono: "SF Mono","Consolas","Menlo",monospace;
+    --sans: "Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); line-height:1.6;
+  }
+  .wrap{max-width:760px;margin:0 auto;padding:20px 16px 60px;}
+  header{
+    border-bottom:3px solid var(--ink); padding-bottom:14px; margin-bottom:22px;
+  }
+  header .eyebrow{
+    font-family:var(--mono); font-size:11px; letter-spacing:.12em; color:var(--rust);
+    text-transform:uppercase;
+  }
+  header h1{
+    margin:4px 0 2px; font-size:22px; font-weight:800;
+  }
+  header p{margin:0; font-size:13px; color:#5a5a52;}
+
+  .step{
+    background:#fff; border:1px solid var(--line); border-radius:2px;
+    margin-bottom:18px; overflow:hidden;
+  }
+  .step-head{
+    display:flex; align-items:center; gap:10px;
+    padding:12px 14px; background:var(--paper-dim); border-bottom:1px solid var(--line);
+  }
+  .step-num{
+    font-family:var(--mono); font-weight:700; font-size:13px;
+    width:22px;height:22px;border-radius:50%;
+    background:var(--steel); color:#fff;
+    display:flex;align-items:center;justify-content:center; flex-shrink:0;
+  }
+  .step-head h2{margin:0; font-size:14px; font-weight:700;}
+  .step-body{padding:14px;}
+
+  textarea{
+    width:100%; min-height:120px; font-family:var(--mono); font-size:12.5px;
+    border:1px solid var(--line); border-radius:2px; padding:10px; resize:vertical;
+    background:#fdfcfa;
+  }
+  input[type=file]{font-size:13px;}
+  .hint{font-size:12px; color:#75705f; margin:6px 0 0;}
+
+  .btn{
+    font-family:var(--sans); font-weight:700; font-size:13px;
+    border:none; border-radius:2px; padding:9px 16px; cursor:pointer;
+    background:var(--steel); color:#fff;
+  }
+  .btn:hover{background:var(--steel-dark);}
+  .btn.secondary{background:transparent; color:var(--steel); border:1px solid var(--steel);}
+  .btn.rust{background:var(--rust);}
+  .btn:disabled{background:#b9b6ab; cursor:not-allowed;}
+  .row-btns{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
+
+  .photo-grid{
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(74px,1fr));
+    gap:8px; margin-top:12px;
+  }
+  .photo-thumb{
+    position:relative; aspect-ratio:1; border-radius:2px; overflow:hidden;
+    border:2px solid transparent; cursor:pointer; background:#ddd;
+  }
+  .photo-thumb img{width:100%;height:100%;object-fit:cover; display:block;}
+  .photo-thumb.used{border-color:var(--ok); opacity:.45;}
+  .photo-thumb .tag{
+    position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,.65); color:#fff;
+    font-size:9px; padding:1px 4px; border-radius:2px; font-family:var(--mono);
+  }
+  .photo-cell{display:flex; flex-direction:column; gap:3px;}
+  .photo-meta{
+    font-family:var(--mono); font-size:9px; color:#75705f; text-align:center;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+
+  .entries{margin-top:4px;}
+  .entry{
+    border:1px solid var(--line); border-left:4px solid var(--steel);
+    border-radius:2px; padding:10px 12px; margin-bottom:8px; background:#fdfcfa;
+  }
+  .entry.selected{border-left-color:var(--rust); background:#fbf3ee;}
+  .entry-meta{
+    display:flex; justify-content:space-between; align-items:center; gap:8px;
+    font-family:var(--mono); font-size:11px; color:#75705f; margin-bottom:4px;
+  }
+  .entry-meta .time{font-weight:700; color:var(--steel-dark);}
+  .entry-text{
+    font-size:13.5px; white-space:pre-wrap; word-break:break-word;
+    border:none; width:100%; background:transparent; font-family:var(--sans);
+    resize:vertical; min-height:20px;
+  }
+  .entry-photos{display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;}
+  .entry-photo-item{position:relative;}
+  .entry-photos img{width:56px;height:56px;object-fit:cover;border-radius:2px; border:1px solid var(--line); display:block;}
+  .entry-photo-item .rm{
+    position:absolute; top:-6px; right:-6px; width:17px;height:17px;border-radius:50%;
+    background:var(--rust); color:#fff; border:1px solid #fff; font-size:11px; line-height:15px;
+    text-align:center; cursor:pointer; padding:0;
+  }
+  .entry-actions{display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;}
+  .entry-actions button, .entry-actions label{
+    font-family:var(--mono); font-size:11px; padding:3px 8px; border-radius:2px;
+    border:1px solid var(--line); background:#fff; cursor:pointer; color:var(--ink);
+    display:inline-flex; align-items:center;
+  }
+  .entry-actions button.attach, .entry-actions label.attach-direct{border-color:var(--steel); color:var(--steel);}
+  .entry-actions button.del{border-color:var(--rust); color:var(--rust);}
+
+  .insert-divider{
+    display:flex; align-items:center; gap:8px; margin:6px 0;
+    color:var(--steel); font-family:var(--mono); font-size:11px;
+    opacity:.5; cursor:pointer; user-select:none;
+  }
+  .insert-divider:hover{opacity:1;}
+  .insert-divider::before, .insert-divider::after{content:''; flex:1; border-top:1px dashed var(--line);}
+
+  .status{
+    font-family:var(--mono); font-size:11.5px; padding:8px 10px; border-radius:2px;
+    background:#eef2ee; color:var(--ok); margin-top:10px; display:none;
+  }
+  .status.show{display:block;}
+
+  .add-manual{
+    display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;
+  }
+  .add-manual input[type=time]{
+    font-family:var(--mono); padding:6px; border:1px solid var(--line); border-radius:2px;
+  }
+  .add-manual input[type=text]{
+    flex:1; min-width:160px; padding:6px 8px; border:1px solid var(--line); border-radius:2px;
+    font-size:13px;
+  }
+
+  footer{
+    text-align:center; font-size:11px; color:#9a9686; margin-top:30px;
+    font-family:var(--mono);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">Field Log Archiver / 現場記録整理</div>
+    <h1>作業ログ整理ツール</h1>
+    <p>LINE WORKS・LINE・Slack・メール・手書きメモなど、どんな形式のトーク履歴やテキストでも、時刻を自動検出して写真と突き合わせ、1枚の記録に整理します。すべて端末内で処理され、外部には送信されません。</p>
+  </header>
+
+  <!-- STEP 1: テキスト取り込み -->
+  <div class="step">
+    <div class="step-head"><div class="step-num">1</div><h2>トーク履歴を貼り付け／読み込み</h2></div>
+    <div class="step-body">
+      <textarea id="rawText" placeholder="LINE WORKS・LINE・Slack・メールなど、どんな形式のトーク履歴／テキストでも貼り付けてください。&#10;例）&#10;10:15　山田太郎　1号機、異音確認。ベアリング交換予定。&#10;[10:42] 交換完了。試運転OK。&#10;午後3時20分 現場撤収"></textarea>
+      <div class="hint">または .txt ファイルを選択：</div>
+      <input type="file" id="txtFile" accept=".txt">
+      <div class="row-btns">
+        <button class="btn" id="parseBtn">履歴を解析する</button>
+        <button class="btn secondary" id="clearTextBtn">クリア</button>
+      </div>
+      <div class="hint">行の中の時刻（HH:MM、[HH:MM]、午前/午後表記など）を自動検出します。時刻が見つからない行や解析できない行も、1行＝1件としてそのまま取り込み、後から編集できます。</div>
+    </div>
+  </div>
+
+  <!-- STEP 2: 写真 -->
+  <div class="step">
+    <div class="step-head"><div class="step-num">2</div><h2>写真をまとめて追加</h2></div>
+    <div class="step-body">
+      <input type="file" id="photoFiles" accept="image/*" multiple>
+      <div class="add-manual" style="margin-top:10px;">
+        <label style="font-size:12px;color:#5a5a52;display:flex;align-items:center;gap:6px;">画質
+          <select id="qualitySel">
+            <option value="0.9">高画質</option>
+            <option value="0.75" selected>標準</option>
+            <option value="0.6">軽量</option>
+            <option value="0.45">最軽量</option>
+          </select>
+        </label>
+        <label style="font-size:12px;color:#5a5a52;display:flex;align-items:center;gap:6px;">最大サイズ
+          <select id="maxDimSel">
+            <option value="2000">2000px</option>
+            <option value="1600" selected>1600px</option>
+            <option value="1200">1200px</option>
+            <option value="800">800px</option>
+          </select>
+        </label>
+      </div>
+      <div class="hint">アップロードした写真は上記の設定に合わせて自動的に圧縮（JPEG化）されるので、たくさん追加しても軽量です。設定は次に選ぶ写真から反映されます（既に追加済みの写真は自動では再圧縮されません）。下のサムネイルをクリック → 続けて記録（下）をクリックすると、その記録に写真が添付されます。</div>
+      <div class="row-btns">
+        <button class="btn secondary" id="recompressBtn">現在の設定で登録済みの写真を再圧縮</button>
+      </div>
+      <div class="hint">再編集で読み込んだ写真や、設定変更前に追加した写真をまとめて軽量化したいときはこちらを押してください。一度小さく圧縮した写真は、後で設定を上げても元の画質には戻りません。</div>
+      <div class="photo-grid" id="photoGrid"></div>
+    </div>
+  </div>
+
+  <!-- STEP 3: 記録一覧 -->
+  <div class="step">
+    <div class="step-head"><div class="step-num">3</div><h2>記録を確認・写真を添付</h2></div>
+    <div class="step-body">
+      <div class="add-manual">
+        <input type="time" id="manualTime">
+        <input type="text" id="manualText" placeholder="記録を手入力で追加...">
+        <button class="btn secondary" id="addManualBtn">追加</button>
+        <button class="btn secondary" id="addPhotoOnlyBtn">📷 写真だけの記録を追加</button>
+        <input type="file" id="photoOnlyFile" accept="image/*" multiple style="display:none;">
+      </div>
+      <div class="entries" id="entries"></div>
+      <div class="hint" id="emptyHint">まだ記録がありません。ステップ1で履歴を解析するか、上から手入力で追加してください。</div>
+      <div class="hint">各記録の「＋ ここにメモを挿入」から、一覧の途中に新しいメモを差し込めます。各記録の「写真を追加」で直接写真を添付、写真の×で個別に外せます。</div>
+    </div>
+  </div>
+
+  <!-- STEP 4: 出力 -->
+  <div class="step">
+    <div class="step-head"><div class="step-num">4</div><h2>記録として出力</h2></div>
+    <div class="step-body">
+      <div class="hint">作業日・タイトルを付けて保存します。</div>
+      <div class="add-manual" style="margin-top:0;">
+        <input type="text" id="logTitle" placeholder="例）1号機 ベアリング交換" style="flex:1;min-width:200px;">
+        <input type="date" id="logDate">
+      </div>
+      <div class="row-btns">
+        <button class="btn" id="exportHtmlBtn">レポートとして保存（HTML・印刷向け）</button>
+        <button class="btn rust" id="shareHtmlBtn">LINE・メールなどで共有</button>
+        <button class="btn secondary" id="importReportBtn">保存したレポートを読み込んで再編集</button>
+        <input type="file" id="importReportFile" accept=".html,.htm" style="display:none;">
+      </div>
+      <div class="hint">このツールで出力したHTMLファイルは、上のボタンから読み込むと記録・写真ごと復元して続きから編集できます。</div>
+      <div class="status" id="statusMsg"></div>
+    </div>
+  </div>
+
+  <footer>すべての処理はこの端末内で完結します。データは保存・送信されません。</footer>
+</div>
+
+<script>
+let entries = [];   // {id, time, text, photos:[photoId,...]}
+let photos = [];    // {id, name, dataUrl}
+let entrySeq = 0, photoSeq = 0;
+let selectedPhotoId = null;
+
+const $ = id => document.getElementById(id);
+
+// ---------- STEP 1: parse ----------
+$('txtFile').addEventListener('change', e=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = ev => { $('rawText').value = ev.target.result; };
+  reader.readAsText(f, 'UTF-8');
+});
+
+$('clearTextBtn').addEventListener('click', ()=>{ $('rawText').value=''; });
+
+$('parseBtn').addEventListener('click', ()=>{
+  const raw = $('rawText').value;
+  if(!raw.trim()){ showStatus('貼り付けるかファイルを選択してください', true); return; }
+  const lines = raw.split(/\r?\n/).map(l=>l.trim()).filter(l=>l.length>0);
+
+  // 汎用パーサー：LINE WORKS / LINE / Slack / メール / メモなど、
+  // 形式を問わず「行の中のどこかにある時刻」を検出して記録に変換する。
+
+  // 純粋な日付だけの区切り行はスキップ（例: 2026/08/26(水)、2026-08-26、8月26日 など）
+  const dateOnlyRe = /^\d{4}[\/\-年]\d{1,2}[\/\-月]\d{1,2}日?(\([日月火水木金土]\))?\s*$|^\d{1,2}月\d{1,2}日(\([日月火水木金土]\))?\s*$/;
+
+  // 行内のどこかにある時刻表現（HH:MM、HH:MM:SS、午前/午後 HH:MM、[HH:MM] など）を検出
+  const timeAnywhereRe = /(午前|午後|AM|PM|am|pm)?\s*(\d{1,2}[:：]\d{2}(?:[:：]\d{2})?)\s*(午前|午後|AM|PM|am|pm)?/;
+
+  // 先頭の「差出人名＋区切り」や末尾に残った記号を取り除くための後処理
+  const leadingJunkRe = /^[\s\)\]\}\-:：、,，»>\|]+/;
+  const trailingJunkRe = /[\s\(\[\{\-:：、,，«<\|]+$/;
+
+  let added = 0;
+  lines.forEach(line=>{
+    if(dateOnlyRe.test(line)) return; // 日付区切り行は無視
+
+    const m = line.match(timeAnywhereRe);
+    let time = '', text = line;
+
+    if(m){
+      time = m[2].replace('：', ':');
+      // 前後にAM/PM表記があれば24時間表記に寄せる（簡易変換）
+      const meridiem = (m[1] || m[3] || '').toLowerCase();
+      if(meridiem.includes('pm') || meridiem.includes('午後')){
+        const [h,mi] = time.split(':');
+        let hh = parseInt(h,10);
+        if(hh < 12) hh += 12;
+        time = String(hh).padStart(2,'0') + ':' + mi;
+      } else if(meridiem.includes('am') || meridiem.includes('午前')){
+        const [h,mi] = time.split(':');
+        let hh = parseInt(h,10);
+        if(hh === 12) hh = 0;
+        time = String(hh).padStart(2,'0') + ':' + mi;
+      }
+
+      const before = line.slice(0, m.index).replace(trailingJunkRe,'');
+      const after = line.slice(m.index + m[0].length).replace(leadingJunkRe,'');
+      // 時刻の後ろに本文が続く一般的な形式を優先。後ろが空なら前側を使う。
+      text = after || before || line;
+    }
+
+    entries.push({id: 'e'+(entrySeq++), time, text, photos: []});
+    added++;
+  });
+  renderEntries();
+  showStatus(added + ' 件の記録を取り込みました');
+});
+
+// ---------- STEP 2: photos ----------
+function compressImage(file, maxDim, quality){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ev=>{
+      const img = new Image();
+      img.onload = ()=>{
+        let { width, height } = img;
+        if(width > maxDim || height > maxDim){
+          if(width >= height){
+            height = Math.round(height * maxDim / width);
+            width = maxDim;
+          } else {
+            width = Math.round(width * maxDim / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        // 透過PNG→JPEG変換時に背景が黒くならないよう白で塗る
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve({ dataUrl, originalSize: file.size, compressedSize: Math.round(dataUrl.length * 0.75) });
+      };
+      img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+      img.src = ev.target.result;
+    };
+    reader.onerror = () => reject(new Error('ファイルの読み込みに失敗しました'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// 既に持っているdataURL（追加済み写真）を、現在選ばれている設定で改めてリサイズ・圧縮し直す
+function recompressDataUrl(dataUrl, maxDim, quality){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    img.onload = ()=>{
+      let { width, height } = img;
+      if(width > maxDim || height > maxDim){
+        if(width >= height){
+          height = Math.round(height * maxDim / width);
+          width = maxDim;
+        } else {
+          width = Math.round(width * maxDim / height);
+          height = maxDim;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => reject(new Error('画像の再圧縮に失敗しました'));
+    img.src = dataUrl;
+  });
+}
+
+$('recompressBtn').addEventListener('click', async ()=>{
+  if(!photos.length){ showStatus('写真がありません', true); return; }
+  const maxDim = parseInt($('maxDimSel').value, 10);
+  const quality = parseFloat($('qualitySel').value);
+  let totalBefore = 0, totalAfter = 0, failed = 0;
+  for(const p of photos){
+    const before = p.dataUrl.length;
+    try{
+      p.dataUrl = await recompressDataUrl(p.dataUrl, maxDim, quality);
+      totalBefore += before;
+      totalAfter += p.dataUrl.length;
+    }catch(err){
+      failed++;
+    }
+  }
+  renderPhotoGrid();
+  renderEntries();
+  if(totalBefore > 0){
+    const pct = Math.round((1 - totalAfter/totalBefore) * 100);
+    showStatus(`登録済みの写真を再圧縮しました（約${pct}%軽量化：概算${(totalBefore*0.75/1024/1024).toFixed(1)}MB → ${(totalAfter*0.75/1024/1024).toFixed(1)}MB）${failed ? `　※${failed}件は失敗` : ''}`);
+  } else {
+    showStatus('再圧縮に失敗しました', true);
+  }
+});
+
+$('photoFiles').addEventListener('change', async e=>{
+  const files = Array.from(e.target.files);
+  if(!files.length) return;
+  const maxDim = parseInt($('maxDimSel').value, 10);
+  const quality = parseFloat($('qualitySel').value);
+  let totalBefore = 0, totalAfter = 0;
+  for(const f of files){
+    try{
+      const { dataUrl, originalSize, compressedSize } = await compressImage(f, maxDim, quality);
+      photos.push({ id:'p'+(photoSeq++), name:f.name, dataUrl });
+      totalBefore += originalSize;
+      totalAfter += compressedSize;
+      renderPhotoGrid();
+    }catch(err){
+      showStatus(`${f.name} の圧縮に失敗しました`, true);
+    }
+  }
+  if(totalBefore > 0){
+    const pct = Math.round((1 - totalAfter/totalBefore) * 100);
+    showStatus(`写真を圧縮しました（約${pct}%軽量化：${(totalBefore/1024/1024).toFixed(1)}MB → ${(totalAfter/1024/1024).toFixed(1)}MB）`);
+  }
+  e.target.value = ''; // 同じファイルを再選択できるようにする
+});
+
+function formatSize(bytes){
+  const kb = bytes / 1024;
+  return kb >= 1024 ? (kb/1024).toFixed(1)+'MB' : Math.round(kb)+'KB';
+}
+
+function renderPhotoGrid(){
+  const grid = $('photoGrid');
+  grid.innerHTML = '';
+  photos.forEach(p=>{
+    const used = entries.some(en=>en.photos.includes(p.id));
+    const cell = document.createElement('div');
+    cell.className = 'photo-cell';
+    const sizeLabel = formatSize(p.dataUrl.length * 0.75);
+
+    const thumb = document.createElement('div');
+    thumb.className = 'photo-thumb' + (used?' used':'');
+    thumb.style.outline = (p.id===selectedPhotoId) ? '3px solid #b5502f' : 'none';
+    thumb.innerHTML = `<img src="${p.dataUrl}" alt="${escapeHtml(p.name)}"><span class="tag">${used?'済':'未'}</span>`;
+    thumb.addEventListener('click', ()=>{
+      selectedPhotoId = (selectedPhotoId===p.id) ? null : p.id;
+      renderPhotoGrid();
+    });
+
+    const meta = document.createElement('div');
+    meta.className = 'photo-meta';
+    meta.textContent = sizeLabel;
+
+    // サムネイル画像の読み込み完了後に実際の縦横サイズ（px）を反映する
+    const imgEl = thumb.querySelector('img');
+    imgEl.addEventListener('load', ()=>{
+      meta.textContent = `${imgEl.naturalWidth}×${imgEl.naturalHeight}・${sizeLabel}`;
+    });
+
+    cell.appendChild(thumb);
+    cell.appendChild(meta);
+    grid.appendChild(cell);
+  });
+}
+
+// ---------- STEP 3: entries ----------
+$('addManualBtn').addEventListener('click', ()=>{
+  const t = $('manualTime').value;
+  const txt = $('manualText').value.trim();
+  if(!txt) return;
+  entries.push({id:'e'+(entrySeq++), time:t, text:txt, photos:[]});
+  $('manualText').value='';
+  renderEntries();
+});
+
+$('addPhotoOnlyBtn').addEventListener('click', ()=> $('photoOnlyFile').click());
+
+$('photoOnlyFile').addEventListener('change', async e=>{
+  const files = Array.from(e.target.files);
+  if(!files.length) return;
+  const maxDim = parseInt($('maxDimSel').value, 10);
+  const quality = parseFloat($('qualitySel').value);
+  const newPhotoIds = [];
+  for(const f of files){
+    try{
+      const { dataUrl } = await compressImage(f, maxDim, quality);
+      const p = { id:'p'+(photoSeq++), name:f.name, dataUrl };
+      photos.push(p);
+      newPhotoIds.push(p.id);
+    }catch(err){
+      showStatus(`${f.name} の圧縮に失敗しました`, true);
+    }
+  }
+  if(newPhotoIds.length){
+    entries.push({id:'e'+(entrySeq++), time:'', text:'', photos:newPhotoIds});
+    renderEntries();
+    renderPhotoGrid();
+    showStatus('写真だけの記録を追加しました');
+  }
+  e.target.value = '';
+});
+
+// 一覧の指定位置（index）に空の記録を挿入し、そのテキスト欄にフォーカスする
+function insertEntryAt(index){
+  const en = {id:'e'+(entrySeq++), time:'', text:'', photos:[]};
+  entries.splice(index, 0, en);
+  renderEntries();
+  requestAnimationFrame(()=>{
+    const el = document.querySelector(`[data-entry-id="${en.id}"] .entry-text`);
+    if(el) el.focus();
+  });
+}
+
+function makeDivider(index){
+  const d = document.createElement('div');
+  d.className = 'insert-divider';
+  d.textContent = '＋ ここにメモを挿入';
+  d.addEventListener('click', ()=> insertEntryAt(index));
+  return d;
+}
+
+async function addPhotosToEntry(en, files){
+  const maxDim = parseInt($('maxDimSel').value, 10);
+  const quality = parseFloat($('qualitySel').value);
+  for(const f of files){
+    try{
+      const { dataUrl } = await compressImage(f, maxDim, quality);
+      const p = { id:'p'+(photoSeq++), name:f.name, dataUrl };
+      photos.push(p);
+      en.photos.push(p.id);
+    }catch(err){
+      showStatus(`${f.name} の圧縮に失敗しました`, true);
+    }
+  }
+  renderEntries();
+  renderPhotoGrid();
+}
+
+function renderEntries(){
+  const wrap = $('entries');
+  wrap.innerHTML = '';
+  $('emptyHint').style.display = entries.length ? 'none' : 'block';
+
+  wrap.appendChild(makeDivider(0));
+
+  entries.forEach((en, idx)=>{
+    const div = document.createElement('div');
+    div.className = 'entry';
+    div.dataset.entryId = en.id;
+    const photoItems = en.photos.map(pid=>{
+      const p = photos.find(x=>x.id===pid);
+      return p ? `<div class="entry-photo-item"><img src="${p.dataUrl}"><button class="rm" data-pid="${pid}" title="この写真を外す">×</button></div>` : '';
+    }).join('');
+
+    div.innerHTML = `
+      <div class="entry-meta">
+        <span class="time">${en.time || '--:--'}</span>
+        <span>${en.photos.length ? '📷 ' + en.photos.length : ''}</span>
+      </div>
+      <textarea class="entry-text" rows="2" placeholder="（写真のみの記録は空欄のままでも可）">${escapeHtml(en.text)}</textarea>
+      <div class="entry-photos">${photoItems}</div>
+      <div class="entry-actions">
+        <button class="attach">選択中の写真を添付</button>
+        <label class="attach-direct">写真を追加<input type="file" accept="image/*" multiple class="entry-photo-input" style="display:none;"></label>
+        <button class="del">削除</button>
+      </div>
+    `;
+
+    div.querySelector('.entry-text').addEventListener('input', e=>{
+      en.text = e.target.value;
+    });
+    div.querySelector('.attach').addEventListener('click', ()=>{
+      if(!selectedPhotoId){
+        showStatus('先に写真をクリックして選択してください', true);
+        return;
+      }
+      if(!en.photos.includes(selectedPhotoId)) en.photos.push(selectedPhotoId);
+      selectedPhotoId = null;
+      renderEntries();
+      renderPhotoGrid();
+    });
+    div.querySelectorAll('.rm').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        en.photos = en.photos.filter(pid => pid !== btn.dataset.pid);
+        renderEntries();
+        renderPhotoGrid();
+      });
+    });
+    div.querySelector('.entry-photo-input').addEventListener('change', e=>{
+      const files = Array.from(e.target.files);
+      if(files.length) addPhotosToEntry(en, files);
+      e.target.value = '';
+    });
+    div.querySelector('.del').addEventListener('click', ()=>{
+      entries = entries.filter(x=>x.id!==en.id);
+      renderEntries();
+      renderPhotoGrid();
+    });
+
+    wrap.appendChild(div);
+    wrap.appendChild(makeDivider(idx+1));
+  });
+}
+
+function escapeHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ---------- STEP 4: export ----------
+function showStatus(msg, isWarn){
+  const el = $('statusMsg');
+  el.textContent = msg;
+  el.style.color = isWarn ? '#b5502f' : '#4a7856';
+  el.style.background = isWarn ? '#fbf0ec' : '#eef2ee';
+  el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'), 3500);
+}
+
+function getMeta(){
+  const title = $('logTitle').value.trim() || '作業ログ';
+  const date = $('logDate').value || new Date().toISOString().slice(0,10);
+  return {title, date};
+}
+
+// 保存・共有のたびに時刻を付けて別ファイル名にする（同じ日・同じタイトルでも上書きされない）
+function buildFilename(title, date){
+  const now = new Date();
+  const hm = String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0') + String(now.getSeconds()).padStart(2,'0');
+  return `${date}_${title}_${hm}.html`;
+}
+
+function download(filename, content, mime){
+  const blob = new Blob([content], {type:mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// 連番IDの数値部分から次に使う採番値を求める（例: 'e12' -> 12）
+function nextSeq(items){
+  return 1 + items.reduce((mx, it)=> Math.max(mx, parseInt(String(it.id).slice(1), 10) || 0), 0);
+}
+
+$('importReportBtn').addEventListener('click', ()=> $('importReportFile').click());
+
+$('importReportFile').addEventListener('change', e=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  if(entries.length && !confirm('現在編集中の記録は上書きされます。読み込みを続けますか？')){
+    e.target.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    try{
+      const html = ev.target.result;
+      const m = html.match(/<script type="application\/json" id="worklogData">([\s\S]*?)<\/script>/);
+      if(!m) throw new Error('no-data');
+      const data = JSON.parse(m[1]);
+      entries = Array.isArray(data.entries) ? data.entries : [];
+      photos = Array.isArray(data.photos) ? data.photos : [];
+      entrySeq = nextSeq(entries);
+      photoSeq = nextSeq(photos);
+      selectedPhotoId = null;
+      $('logTitle').value = data.title || '';
+      $('logDate').value = data.date || '';
+      renderEntries();
+      renderPhotoGrid();
+      showStatus('レポートを読み込みました。続きから編集できます。');
+    }catch(err){
+      showStatus('読み込みに失敗しました。このツールで出力したHTMLファイルを選択してください', true);
+    }
+  };
+  reader.onerror = () => showStatus('ファイルの読み込みに失敗しました', true);
+  reader.readAsText(f, 'UTF-8');
+  e.target.value = '';
+});
+
+function buildReportHtml(title, date){
+  // どの記録にも添付されていない写真は出力に含めない（未使用分でファイルが膨れるのを防ぐ）
+  const usedPhotoIds = new Set(entries.flatMap(en => en.photos));
+  const usedPhotos = photos.filter(p => usedPhotoIds.has(p.id));
+  // 元データ（記録・写真）をレポート内に埋め込み、後でこのツールに読み込んで再編集できるようにする。
+  // "<" を全てユニコードエスケープし、メモ本文にスクリプト終了タグ相当の文字列が含まれても
+  // 埋め込みJSONが親のスクリプト要素を途中終了させないようにする。
+  const jsonStr = JSON.stringify({title, date, entries, photos: usedPhotos}).replace(/</g, '\\u003c');
+
+  const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+<title>${title}</title>
+<style>body{font-family:"Hiragino Kaku Gothic ProN",sans-serif;background:#f2efe9;color:#1c2321;max-width:720px;margin:0 auto;padding:24px 16px;}
+h1{border-bottom:3px solid #1c2321;padding-bottom:10px;}
+.meta{font-family:monospace;font-size:12px;color:#75705f;margin-bottom:20px;}
+#lb{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:999;align-items:center;justify-content:center;padding:24px;cursor:zoom-out;}
+#lb.show{display:flex;}
+#lb img{max-width:100%;max-height:100%;object-fit:contain;border-radius:4px;}
+@media print{body{background:#fff;} #lb{display:none !important;}}
+</style></head><body>
+<h1>${title}</h1>
+<div class="meta">日付：${date}　｜　出力：作業ログ整理ツール（このファイルはツールに読み込んで再編集できます）</div>
+<div id="report"></div>
+<div id="lb" onclick="this.classList.remove('show')"><img id="lbImg" src="" alt=""></div>
+<script type="application/json" id="worklogData">${jsonStr}<\/script>
+<script>
+(function(){
+  var data = JSON.parse(document.getElementById('worklogData').textContent);
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  window.openLB = function(src){
+    document.getElementById('lbImg').src = src;
+    document.getElementById('lb').classList.add('show');
+  };
+  var body = data.entries.map(function(en, i){
+    var imgs = en.photos.map(function(pid){
+      var p = data.photos.filter(function(x){ return x.id===pid; })[0];
+      return p ? '<img src="'+p.dataUrl+'" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:4px;cursor:zoom-in;" onclick="openLB(this.src)">' : '';
+    }).join('');
+    var photoBlock = en.photos.length
+      ? '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;margin-top:8px;">'+imgs+'</div>'
+      : '';
+    return '<section style="border-left:4px solid #3d5a6c;padding:10px 14px;margin-bottom:14px;background:#fdfcfa;border:1px solid #c9c2b2;border-radius:2px;">'
+      + '<div style="font-family:monospace;font-size:12px;color:#75705f;font-weight:bold;">'+esc(en.time || ('記録 ' + (i+1)))+'</div>'
+      + '<div style="white-space:pre-wrap;font-size:14px;margin:4px 0 0;">'+esc(en.text)+'</div>'
+      + photoBlock
+      + '</section>';
+  }).join('\\n');
+  document.getElementById('report').innerHTML = body;
+})();
+<\/script>
+</body></html>`;
+  return html;
+}
+
+$('exportHtmlBtn').addEventListener('click', ()=>{
+  if(!entries.length){ showStatus('記録がありません', true); return; }
+  const {title, date} = getMeta();
+  const html = buildReportHtml(title, date);
+  download(buildFilename(title, date), html, 'text/html');
+  showStatus('HTMLレポートを保存しました（このファイルは後で読み込んで再編集できます）');
+});
+
+$('shareHtmlBtn').addEventListener('click', async ()=>{
+  if(!entries.length){ showStatus('記録がありません', true); return; }
+  const {title, date} = getMeta();
+  const html = buildReportHtml(title, date);
+  const file = new File([html], buildFilename(title, date), {type:'text/html'});
+
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{
+      await navigator.share({files:[file], title});
+    }catch(err){
+      if(err.name !== 'AbortError') showStatus('共有できませんでした', true);
+    }
+  } else {
+    // 共有APIが使えない場合（PC等）はダウンロードにフォールバック
+    download(file.name, html, 'text/html');
+    showStatus('この端末は直接共有に対応していないため、ファイルとして保存しました');
+  }
+});
+
+renderEntries();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
