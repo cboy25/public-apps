@@ -157,6 +157,11 @@
   }
   #lb.show{display:flex;}
   #lb img{max-width:100%;max-height:100%;object-fit:contain;border-radius:4px;}
+  #lbEditBtn{
+    position:absolute; left:50%; bottom:calc(24px + var(--safe-b)); transform:translateX(-50%);
+    font-family:var(--sans); font-weight:700; font-size:14px; padding:11px 22px;
+    border-radius:24px; border:none; background:var(--rust); color:#fff; cursor:pointer;
+  }
 
   /* ---------- photo annotate ---------- */
   #annotate{
@@ -249,7 +254,10 @@
 <input type="file" id="galleryInput" accept="image/*" multiple style="display:none;">
 <input type="file" id="entryPhotoInput" accept="image/*" capture="environment" style="display:none;">
 
-<div id="lb" onclick="this.classList.remove('show')"><img id="lbImg" src="" alt=""></div>
+<div id="lb" onclick="this.classList.remove('show')">
+  <img id="lbImg" src="" alt="">
+  <button id="lbEditBtn">✎ 書き込む</button>
+</div>
 
 <div id="annotate">
   <div id="annotateCanvasWrap"><canvas id="annotateCanvas"></canvas></div>
@@ -480,6 +488,8 @@ function renderFeed(){
 
     div.querySelectorAll('.entry-photos img').forEach(img=>{
       img.addEventListener('click', ()=>{
+        lbEntryId = en.id;
+        lbPhotoIdx = parseInt(img.dataset.idx, 10);
         $('lbImg').src = img.src;
         $('lb').classList.add('show');
       });
@@ -496,8 +506,16 @@ function renderFeed(){
 }
 
 // ---------- photo annotate (draw on a photo) ----------
+let lbEntryId = null, lbPhotoIdx = null;
 let annEntryId = null, annPhotoIdx = null;
 let annCtx = null, annHistory = [], annDrawing = false;
+
+$('lbEditBtn').addEventListener('click', e=>{
+  e.stopPropagation();
+  if(lbEntryId===null) return;
+  $('lb').classList.remove('show');
+  openAnnotate(lbEntryId, lbPhotoIdx);
+});
 
 function openAnnotate(entryId, photoIdx){
   const en = entries.find(e=>e.id===entryId);
