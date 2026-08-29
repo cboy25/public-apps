@@ -112,18 +112,29 @@
     <div class="preview" id="preview"></div>
   </div>
 
+  <div class="section">
+    <h2>カメラ撮影</h2>
+    <p class="desc">端末の仕様により、アプリ内で撮影した写真は写真アプリ（ギャラリー）に自動保存されないことがあります。オンにすると、撮影のたびに端末のダウンロードにも保存し、後から写真アプリ側でも確認できるようにします。</p>
+    <div class="field" style="display:flex;align-items:center;gap:10px;margin-bottom:0;">
+      <input type="checkbox" id="saveOriginalChk" style="width:20px;height:20px;flex-shrink:0;">
+      <label for="saveOriginalChk" style="margin-bottom:0;font-weight:400;">撮影した写真を端末にも保存する</label>
+    </div>
+  </div>
+
   <button class="btn" id="saveBtn">保存する</button>
   <div class="status" id="statusMsg">設定を保存しました</div>
 </div>
 
 <script>
 const $ = id => document.getElementById(id);
-const DEFAULT_SETTINGS = { quality: 0.75, maxDim: 1600 };
+const DEFAULT_SETTINGS = { quality: 0.75, maxDim: 1600, saveOriginal: true };
 
 function loadSettings(){
   try{
     const saved = JSON.parse(localStorage.getItem('wlo_settings'));
-    if(saved && typeof saved.quality === 'number' && typeof saved.maxDim === 'number') return saved;
+    if(saved && typeof saved.quality === 'number' && typeof saved.maxDim === 'number'){
+      return Object.assign({}, DEFAULT_SETTINGS, saved);
+    }
   }catch(err){}
   return DEFAULT_SETTINGS;
 }
@@ -131,6 +142,7 @@ function loadSettings(){
 function applyToForm(settings){
   $('qualitySel').value = String(settings.quality);
   $('maxDimSel').value = String(settings.maxDim);
+  $('saveOriginalChk').checked = settings.saveOriginal !== false;
   updatePreview();
 }
 
@@ -148,7 +160,8 @@ $('maxDimSel').addEventListener('change', updatePreview);
 $('saveBtn').addEventListener('click', ()=>{
   const settings = {
     quality: parseFloat($('qualitySel').value),
-    maxDim: parseInt($('maxDimSel').value, 10)
+    maxDim: parseInt($('maxDimSel').value, 10),
+    saveOriginal: $('saveOriginalChk').checked
   };
   localStorage.setItem('wlo_settings', JSON.stringify(settings));
   const el = $('statusMsg');

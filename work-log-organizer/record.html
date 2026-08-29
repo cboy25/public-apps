@@ -245,11 +245,13 @@ let addPhotoTargetId = null; // when set, next captured photo attaches to this e
 
 const $ = id => document.getElementById(id);
 
-const DEFAULT_SETTINGS = { quality: 0.75, maxDim: 1600 };
+const DEFAULT_SETTINGS = { quality: 0.75, maxDim: 1600, saveOriginal: true };
 function loadSettings(){
   try{
     const saved = JSON.parse(localStorage.getItem('wlo_settings'));
-    if(saved && typeof saved.quality === 'number' && typeof saved.maxDim === 'number') return saved;
+    if(saved && typeof saved.quality === 'number' && typeof saved.maxDim === 'number'){
+      return Object.assign({}, DEFAULT_SETTINGS, saved);
+    }
   }catch(err){}
   return DEFAULT_SETTINGS;
 }
@@ -302,7 +304,24 @@ function showStatus(msg, isWarn){
 $('cameraBtn').addEventListener('click', ()=>{ addPhotoTargetId = null; $('cameraInput').click(); });
 $('galleryBtn').addEventListener('click', ()=>{ addPhotoTargetId = null; $('galleryInput').click(); });
 
-async function handleIncomingFiles(files){
+// カメラ撮影はAndroid/iOSともギャラリーに自動保存されないことが多いため、
+// 元の写真をダウンロード（端末の写真アプリからも見える場所）に保存しておく。
+function saveOriginalToDownloads(file){
+  const d = new Date();
+  const stamp = d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0')
+    + '_' + String(d.getHours()).padStart(2,'0') + String(d.getMinutes()).padStart(2,'0') + String(d.getSeconds()).padStart(2,'0');
+  const ext = (file.name && file.name.includes('.')) ? file.name.split('.').pop() : 'jpg';
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url; a.download = `genba_${stamp}.${ext}`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=> URL.revokeObjectURL(url), 5000);
+}
+
+async function handleIncomingFiles(files, fromCamera){
+  if(fromCamera && loadSettings().saveOriginal){
+    files.forEach(saveOriginalToDownloads);
+  }
   for(const f of files){
     try{
       const dataUrl = await compressImage(f);
@@ -323,17 +342,17 @@ async function handleIncomingFiles(files){
 $('cameraInput').addEventListener('change', e=>{
   const files = Array.from(e.target.files);
   e.target.value = '';
-  if(files.length) handleIncomingFiles(files);
+  if(files.length) handleIncomingFiles(files, true);
 });
 $('galleryInput').addEventListener('change', e=>{
   const files = Array.from(e.target.files);
   e.target.value = '';
-  if(files.length) handleIncomingFiles(files);
+  if(files.length) handleIncomingFiles(files, false);
 });
 $('entryPhotoInput').addEventListener('change', e=>{
   const files = Array.from(e.target.files);
   e.target.value = '';
-  if(files.length) handleIncomingFiles(files);
+  if(files.length) handleIncomingFiles(files, true);
 });
 
 function renderPending(){
