@@ -522,7 +522,45 @@ function renderFeed(){
 
     feed.appendChild(div);
   });
+
+  saveDraft();
 }
+
+// ---------- draft auto-save (設定ページへの移動やアプリの再起動で記録が消えないようにする) ----------
+const DRAFT_KEY = 'wlo_draft';
+
+function saveDraft(){
+  try{
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      entries, entrySeq,
+      title: $('logTitle').value,
+      date: $('logDate').value
+    }));
+  }catch(err){
+    // 写真が多くストレージの上限を超えた場合など。下書き保存できないだけでアプリ自体は継続動作する。
+  }
+}
+
+function loadDraft(){
+  try{
+    const draft = JSON.parse(localStorage.getItem(DRAFT_KEY));
+    if(!draft || !Array.isArray(draft.entries)) return false;
+    entries = draft.entries;
+    entrySeq = typeof draft.entrySeq === 'number' ? draft.entrySeq : nextSeq(entries);
+    if(draft.title) $('logTitle').value = draft.title;
+    if(draft.date) $('logDate').value = draft.date;
+    return entries.length > 0;
+  }catch(err){
+    return false;
+  }
+}
+
+function clearDraft(){
+  try{ localStorage.removeItem(DRAFT_KEY); }catch(err){}
+}
+
+$('logTitle').addEventListener('input', saveDraft);
+$('logDate').addEventListener('change', saveDraft);
 
 // ---------- photo delete ----------
 function deletePhoto(entryId, photoIdx){
@@ -797,6 +835,7 @@ $('resetBtn').addEventListener('click', ()=>{
   $('logTitle').value = '';
   $('logDate').value = new Date().toISOString().slice(0,10);
   $('composeText').value = '';
+  clearDraft();
   renderPending();
   renderFeed();
   showStatus('新規作成しました');
@@ -835,6 +874,7 @@ $('importFile').addEventListener('change', e=>{
   e.target.value = '';
 });
 
+if(loadDraft()) showStatus('前回の続きから記録を復元しました');
 renderFeed();
 
 if('serviceWorker' in navigator){
