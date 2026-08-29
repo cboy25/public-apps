@@ -245,7 +245,7 @@ let addPhotoTargetId = null; // when set, next captured photo attaches to this e
 
 const $ = id => document.getElementById(id);
 
-const DEFAULT_SETTINGS = { quality: 0.75, maxDim: 1600, saveOriginal: true };
+const DEFAULT_SETTINGS = { quality: 0.75, maxDim: 1600, saveOriginal: false };
 function loadSettings(){
   try{
     const saved = JSON.parse(localStorage.getItem('wlo_settings'));
