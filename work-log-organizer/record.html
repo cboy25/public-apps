@@ -94,10 +94,24 @@
   .entry-time-input{
     font-family:var(--mono); font-size:12px; padding:2px 4px; border:1px solid var(--steel); border-radius:4px;
   }
+  .entry-tools{display:flex; align-items:center; gap:2px;}
+  .entry-move{
+    border:none; background:none; color:var(--steel); font-size:15px; cursor:pointer;
+    padding:4px 7px; line-height:1;
+  }
+  .entry-move:disabled{color:#d4cfc0; cursor:default;}
   .entry-del{
     border:none; background:none; color:#a89f8c; font-size:15px; cursor:pointer; padding:4px 6px;
   }
   .entry-del:active{color:var(--rust);}
+
+  .insert-divider{
+    display:flex; align-items:center; gap:8px; margin:2px 0 8px;
+    color:var(--steel); font-family:var(--mono); font-size:11px;
+    opacity:.55; cursor:pointer; user-select:none;
+  }
+  .insert-divider:active{opacity:1;}
+  .insert-divider::before, .insert-divider::after{content:''; flex:1; border-top:1px dashed var(--line);}
   .entry-text{
     width:100%; border:none; background:transparent; font-family:var(--sans); font-size:14.5px;
     resize:none; min-height:22px; padding:0; white-space:pre-wrap;
@@ -216,11 +230,16 @@
   .btn.secondary{background:transparent; color:var(--steel); border:1px solid var(--steel);}
   .btn:disabled{background:#c7c2b4; color:#fff;}
 
+  /* 画面のどこにいても見えるトースト。以前は出力シートの中にあり、
+     シートを開いていないとメッセージが画面外で見えなかった。 */
   .status{
-    font-family:var(--mono); font-size:11.5px; padding:8px 10px; border-radius:6px;
-    background:#eef2ee; color:var(--ok); margin-top:10px; display:none;
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom:calc(80px + var(--safe-b)); z-index:950; max-width:calc(100% - 32px);
+    font-family:var(--sans); font-size:12.5px; padding:10px 16px; border-radius:20px;
+    background:var(--ok); color:#fff; display:none; text-align:center;
+    box-shadow:0 2px 12px rgba(0,0,0,.25);
   }
-  .status.warn{background:#fbf0ec; color:var(--rust);}
+  .status.warn{background:var(--rust);}
   .status.show{display:block;}
 </style>
 </head>
@@ -233,6 +252,7 @@
       <h1>現場記録</h1>
     </div>
     <div class="header-actions">
+      <button class="icon-btn" id="sortBtn" title="時刻順に並べ替え">⇅</button>
       <button class="icon-btn" id="resetBtn" title="新規作成">🆕</button>
       <a class="icon-btn" href="settings.html" title="設定" style="text-decoration:none;">⚙️</a>
       <button class="icon-btn" id="openSheetBtn" title="保存・共有">📤</button>
@@ -291,8 +311,9 @@
     <button class="btn secondary" id="closeSheetBtn">閉じる</button>
   </div>
   <div class="hint" style="font-size:11.5px;color:#8b8676;margin-top:10px;">PDFは印刷画面が開きます。「PDFとして保存」を選ぶとPDFファイルになり、そのまま共有もできます。</div>
-  <div class="status" id="statusMsg"></div>
 </div>
+
+<div class="status" id="statusMsg"></div>
 
 <script>
 let entries = [];        // {id, time:'HH:MM', text, photos:[dataUrl,...]}
@@ -425,6 +446,7 @@ function renderPending(){
     });
     wrap.appendChild(chip);
   });
+  saveDraft(); // 送信前の写真も、設定画面へ移動しても失われないように保存する
 }
 
 // ---------- compose: send ----------
@@ -452,16 +474,23 @@ function renderFeed(){
     feed.innerHTML = '<div class="empty-hint" id="emptyHint">下のボタンから写真を撮るかメモを書いて、記録を始めましょう。</div>';
     return;
   }
-  entries.forEach(en=>{
+  entries.forEach((en, ei)=>{
+    feed.appendChild(makeDivider(ei));
+
     const div = document.createElement('div');
     div.className = 'entry';
+    div.dataset.entryId = en.id;
 
     const photosHtml = en.photos.map((url,pi) => `<div class="photo-wrap"><img src="${url}" data-idx="${pi}"><button class="photo-edit-btn" data-idx="${pi}" title="書き込む">✎</button><button class="photo-del-btn" data-idx="${pi}" title="削除">×</button></div>`).join('');
 
     div.innerHTML = `
       <div class="entry-top">
-        <button class="entry-time">${en.time}</button>
-        <button class="entry-del" title="削除">🗑</button>
+        <button class="entry-time">${en.time || '--:--'}</button>
+        <div class="entry-tools">
+          <button class="entry-move up" title="上へ" ${ei===0 ? 'disabled' : ''}>↑</button>
+          <button class="entry-move down" title="下へ" ${ei===entries.length-1 ? 'disabled' : ''}>↓</button>
+          <button class="entry-del" title="削除">🗑</button>
+        </div>
       </div>
       <textarea class="entry-text" rows="1" placeholder="メモを入力...">${esc(en.text)}</textarea>
       <div class="entry-photos">
@@ -469,6 +498,9 @@ function renderFeed(){
         <button class="entry-addphoto" title="写真を追加">＋</button>
       </div>
     `;
+
+    div.querySelector('.entry-move.up').addEventListener('click', ()=> moveEntry(ei, -1));
+    div.querySelector('.entry-move.down').addEventListener('click', ()=> moveEntry(ei, 1));
 
     const timeBtn = div.querySelector('.entry-time');
     timeBtn.addEventListener('click', ()=>{
@@ -485,6 +517,7 @@ function renderFeed(){
     ta.addEventListener('input', ()=>{
       en.text = ta.value;
       ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px';
+      saveDraft(); // 再描画はしない（入力中にフォーカスが飛ぶため）ので、ここで個別に保存する
     });
     requestAnimationFrame(()=>{ ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; });
 
@@ -523,21 +556,79 @@ function renderFeed(){
     feed.appendChild(div);
   });
 
+  feed.appendChild(makeDivider(entries.length)); // 一番下に追加するための区切り
+
   saveDraft();
 }
+
+// 一覧の指定位置に空の記録を挿入し、そのメモ欄にフォーカスする。
+// 時刻は前後の記録から引き継ぐ（挿入位置の直前の記録と同じ時刻）ので、
+// 「あとから思い出した作業」を時系列の正しい場所に差し込める。
+function insertEntryAt(index){
+  const prev = entries[index-1];
+  const en = { id:'e'+(entrySeq++), time: prev ? prev.time : nowHM(), text:'', photos:[] };
+  entries.splice(index, 0, en);
+  renderFeed();
+  requestAnimationFrame(()=>{
+    const el = document.querySelector(`[data-entry-id="${en.id}"] .entry-text`);
+    if(el) el.focus();
+  });
+}
+
+function makeDivider(index){
+  const d = document.createElement('div');
+  d.className = 'insert-divider';
+  d.textContent = '＋ ここに記録を挿入';
+  d.addEventListener('click', ()=> insertEntryAt(index));
+  return d;
+}
+
+// 記録を1つ上／下に入れ替える
+function moveEntry(index, dir){
+  const to = index + dir;
+  if(to < 0 || to >= entries.length) return;
+  const [moved] = entries.splice(index, 1);
+  entries.splice(to, 0, moved);
+  renderFeed();
+}
+
+// 時刻順に並べ替える。時刻が未設定（--:--）の記録は、順序を崩さないよう末尾にまとめる。
+$('sortBtn').addEventListener('click', ()=>{
+  if(entries.length < 2){ showStatus('並べ替える記録がありません', true); return; }
+  entries = entries
+    .map((en, i)=> ({ en, i })) // 同時刻の記録どうしは元の順序を保つ
+    .sort((a, b)=>{
+      const ta = a.en.time || '99:99';
+      const tb = b.en.time || '99:99';
+      if(ta !== tb) return ta < tb ? -1 : 1;
+      return a.i - b.i;
+    })
+    .map(x => x.en);
+  renderFeed();
+  showStatus('時刻順に並べ替えました');
+});
 
 // ---------- draft auto-save (設定ページへの移動やアプリの再起動で記録が消えないようにする) ----------
 const DRAFT_KEY = 'wlo_draft';
 
+// 保存できない状態が続く間に何度も警告を出さないためのフラグ（保存が成功したら解除する）
+let draftQuotaWarned = false;
+
 function saveDraft(){
   try{
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
-      entries, entrySeq,
+      entries, entrySeq, pendingPhotos,
       title: $('logTitle').value,
       date: $('logDate').value
     }));
+    draftQuotaWarned = false;
   }catch(err){
-    // 写真が多くストレージの上限を超えた場合など。下書き保存できないだけでアプリ自体は継続動作する。
+    // 写真が増えると端末の保存領域（約5MB）を超える。黙って失敗すると
+    // 「保存されているつもり」で記録を失うので、必ずユーザーに知らせる。
+    if(!draftQuotaWarned){
+      draftQuotaWarned = true;
+      alert('写真が多く、これ以上アプリ内に自動保存できません。\n\n右上の📤から「レポートとして保存」でファイルに書き出してください。書き出さずにアプリを閉じると、ここから先の記録は失われます。');
+    }
   }
 }
 
@@ -547,9 +638,10 @@ function loadDraft(){
     if(!draft || !Array.isArray(draft.entries)) return false;
     entries = draft.entries;
     entrySeq = typeof draft.entrySeq === 'number' ? draft.entrySeq : nextSeq(entries);
+    pendingPhotos = Array.isArray(draft.pendingPhotos) ? draft.pendingPhotos : [];
     if(draft.title) $('logTitle').value = draft.title;
     if(draft.date) $('logDate').value = draft.date;
-    return entries.length > 0;
+    return entries.length > 0 || pendingPhotos.length > 0;
   }catch(err){
     return false;
   }
@@ -875,6 +967,7 @@ $('importFile').addEventListener('change', e=>{
 });
 
 if(loadDraft()) showStatus('前回の続きから記録を復元しました');
+renderPending(); // 送信前の写真も復元して表示する
 renderFeed();
 
 if('serviceWorker' in navigator){
