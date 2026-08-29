@@ -103,8 +103,14 @@
     resize:none; min-height:22px; padding:0; white-space:pre-wrap;
   }
   .entry-photos{display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;}
-  .entry-photos img{
-    width:64px;height:64px;object-fit:cover;border-radius:6px; border:1px solid var(--line); cursor:zoom-in;
+  .photo-wrap{position:relative; width:64px; height:64px;}
+  .photo-wrap img{
+    width:64px;height:64px;object-fit:cover;border-radius:6px; border:1px solid var(--line); cursor:zoom-in; display:block;
+  }
+  .photo-edit-btn{
+    position:absolute; bottom:-4px; right:-4px; width:22px;height:22px;border-radius:50%;
+    background:var(--steel); color:#fff; border:2px solid #fff; font-size:11px;
+    display:flex;align-items:center;justify-content:center; cursor:pointer; padding:0;
   }
   .entry-addphoto{
     width:64px;height:64px;border-radius:6px;border:1px dashed var(--line);
@@ -151,6 +157,27 @@
   }
   #lb.show{display:flex;}
   #lb img{max-width:100%;max-height:100%;object-fit:contain;border-radius:4px;}
+
+  /* ---------- photo annotate ---------- */
+  #annotate{
+    display:none; position:fixed; inset:0; background:#000; z-index:1000;
+    flex-direction:column;
+  }
+  #annotate.show{display:flex;}
+  #annotateCanvasWrap{
+    flex:1 1 auto; display:flex; align-items:center; justify-content:center; overflow:hidden; touch-action:none;
+  }
+  #annotateCanvas{ max-width:100%; max-height:100%; touch-action:none; background:#111; }
+  #annotateBar{
+    flex:0 0 auto; display:flex; gap:8px; padding:calc(10px + var(--safe-b)) 12px 12px;
+    background:#111;
+  }
+  #annotateBar button{
+    flex:1; font-family:var(--sans); font-weight:700; font-size:13px; padding:11px 8px;
+    border-radius:6px; border:1px solid #444; background:#222; color:#fff; cursor:pointer;
+  }
+  #annotateBar button.primary{background:var(--rust); border-color:var(--rust);}
+  #annotateBar button:active{opacity:.8;}
 
   /* ---------- output sheet ---------- */
   #sheetBackdrop{
@@ -223,6 +250,15 @@
 <input type="file" id="entryPhotoInput" accept="image/*" capture="environment" style="display:none;">
 
 <div id="lb" onclick="this.classList.remove('show')"><img id="lbImg" src="" alt=""></div>
+
+<div id="annotate">
+  <div id="annotateCanvasWrap"><canvas id="annotateCanvas"></canvas></div>
+  <div id="annotateBar">
+    <button id="annUndoBtn">戻す</button>
+    <button id="annCancelBtn">キャンセル</button>
+    <button class="primary" id="annSaveBtn">保存</button>
+  </div>
+</div>
 
 <div id="sheetBackdrop"></div>
 <div id="sheet">
@@ -399,7 +435,7 @@ function renderFeed(){
     const div = document.createElement('div');
     div.className = 'entry';
 
-    const photosHtml = en.photos.map(url => `<img src="${url}">`).join('');
+    const photosHtml = en.photos.map((url,pi) => `<div class="photo-wrap"><img src="${url}" data-idx="${pi}"><button class="photo-edit-btn" data-idx="${pi}" title="書き込む">✎</button></div>`).join('');
 
     div.innerHTML = `
       <div class="entry-top">
@@ -449,9 +485,99 @@ function renderFeed(){
       });
     });
 
+    div.querySelectorAll('.photo-edit-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        openAnnotate(en.id, parseInt(btn.dataset.idx, 10));
+      });
+    });
+
     feed.appendChild(div);
   });
 }
+
+// ---------- photo annotate (draw on a photo) ----------
+let annEntryId = null, annPhotoIdx = null;
+let annCtx = null, annHistory = [], annDrawing = false;
+
+function openAnnotate(entryId, photoIdx){
+  const en = entries.find(e=>e.id===entryId);
+  if(!en) return;
+  const url = en.photos[photoIdx];
+  if(!url) return;
+  annEntryId = entryId;
+  annPhotoIdx = photoIdx;
+  annHistory = [];
+
+  const img = new Image();
+  img.onload = ()=>{
+    const canvas = $('annotateCanvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    annCtx = canvas.getContext('2d');
+    annCtx.drawImage(img, 0, 0);
+    $('annotate').classList.add('show');
+  };
+  img.src = url;
+}
+
+function annPointerPos(e, canvas){
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+}
+
+(function initAnnotateDrawing(){
+  const canvas = $('annotateCanvas');
+  const lineWidthFor = c => Math.max(6, Math.min(c.width, c.height) * 0.012);
+
+  canvas.addEventListener('pointerdown', e=>{
+    if(!annCtx) return;
+    canvas.setPointerCapture(e.pointerId);
+    annHistory.push(annCtx.getImageData(0, 0, canvas.width, canvas.height));
+    if(annHistory.length > 15) annHistory.shift();
+    annDrawing = true;
+    const p = annPointerPos(e, canvas);
+    annCtx.strokeStyle = '#e0362b';
+    annCtx.lineWidth = lineWidthFor(canvas);
+    annCtx.lineCap = 'round';
+    annCtx.lineJoin = 'round';
+    annCtx.beginPath();
+    annCtx.moveTo(p.x, p.y);
+  });
+  canvas.addEventListener('pointermove', e=>{
+    if(!annDrawing) return;
+    const p = annPointerPos(e, canvas);
+    annCtx.lineTo(p.x, p.y);
+    annCtx.stroke();
+  });
+  const endStroke = ()=>{ annDrawing = false; };
+  canvas.addEventListener('pointerup', endStroke);
+  canvas.addEventListener('pointercancel', endStroke);
+  canvas.addEventListener('pointerleave', endStroke);
+})();
+
+$('annUndoBtn').addEventListener('click', ()=>{
+  if(!annCtx || !annHistory.length) return;
+  const prev = annHistory.pop();
+  annCtx.putImageData(prev, 0, 0);
+});
+
+function closeAnnotate(){
+  $('annotate').classList.remove('show');
+  annCtx = null; annEntryId = null; annPhotoIdx = null; annHistory = [];
+}
+$('annCancelBtn').addEventListener('click', closeAnnotate);
+
+$('annSaveBtn').addEventListener('click', ()=>{
+  if(!annCtx || annEntryId===null || annPhotoIdx===null){ closeAnnotate(); return; }
+  const en = entries.find(e=>e.id===annEntryId);
+  if(en){
+    en.photos[annPhotoIdx] = $('annotateCanvas').toDataURL('image/jpeg', 0.85);
+    renderFeed();
+  }
+  closeAnnotate();
+});
 
 // ---------- output sheet ----------
 $('openSheetBtn').addEventListener('click', ()=>{
