@@ -714,13 +714,14 @@ function buildReportHtml(title, date){
 h1{border-bottom:3px solid #1c2321;padding-bottom:10px;font-size:26px;}
 .meta{font-family:monospace;font-size:13px;color:#75705f;margin-bottom:20px;}
 #report{--scale:1;}
-.size-ctrl{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:12px;}
+.size-ctrl{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
 .size-ctrl span{font-size:12px;color:#75705f;}
 .size-ctrl button{
   font-family:"Hiragino Kaku Gothic ProN",sans-serif;font-weight:700;border:1px solid #3d5a6c;color:#3d5a6c;
   background:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:14px;
 }
 .size-ctrl button:active{background:#e6e2d8;}
+.size-ctrl button.photos{border-color:#b5502f;color:#b5502f;}
 #lb{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:999;align-items:center;justify-content:center;padding:24px;cursor:zoom-out;}
 #lb.show{display:flex;}
 #lb img{max-width:100%;max-height:100%;object-fit:contain;border-radius:4px;}
@@ -732,6 +733,7 @@ h1{border-bottom:3px solid #1c2321;padding-bottom:10px;font-size:26px;}
   <span>文字・写真サイズ</span>
   <button onclick="adjustScale(-1)">A −</button>
   <button onclick="adjustScale(1)">A ＋</button>
+  <button class="photos" id="savePhotosBtn" onclick="savePhotosOnly()" style="display:none;">📷 画像のみ保存</button>
 </div>
 <div id="report"></div>
 <div id="lb" onclick="this.classList.remove('show')"><img id="lbImg" src="" alt=""></div>
@@ -749,6 +751,91 @@ h1{border-bottom:3px solid #1c2321;padding-bottom:10px;font-size:26px;}
     reportScale = Math.min(1.8, Math.max(0.7, +(reportScale + dir*0.15).toFixed(2)));
     document.getElementById('report').style.setProperty('--scale', reportScale);
   };
+
+  // ---------- 画像のみ保存（ZIPにまとめて1回でダウンロード。外部ライブラリ不使用） ----------
+  function crc32(bytes){
+    if(!crc32.table){
+      var t = [];
+      for(var n=0; n<256; n++){
+        var c = n;
+        for(var k=0; k<8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        t[n] = c;
+      }
+      crc32.table = t;
+    }
+    var crc = 0 ^ -1;
+    for(var i=0; i<bytes.length; i++) crc = (crc >>> 8) ^ crc32.table[(crc ^ bytes[i]) & 0xFF];
+    return (crc ^ -1) >>> 0;
+  }
+  function u16(n){ return [n & 0xFF, (n >>> 8) & 0xFF]; }
+  function u32(n){ return [n & 0xFF, (n >>> 8) & 0xFF, (n >>> 16) & 0xFF, (n >>> 24) & 0xFF]; }
+  function dataUrlToBytes(dataUrl){
+    var bin = atob(dataUrl.split(',')[1]);
+    var bytes = new Uint8Array(bin.length);
+    for(var i=0; i<bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+  // 圧縮なし（STORED方式）の最小限のZIPファイルを組み立てる。写真は既にJPEGで圧縮済みなので、
+  // 再圧縮しても軽くならず、STOREDの方が実装が単純で確実に動く。
+  function buildZipBlob(files){
+    var localParts = [], centralParts = [];
+    var offset = 0;
+    var now = new Date();
+    var dosTime = ((now.getHours() & 0x1F) << 11) | ((now.getMinutes() & 0x3F) << 5) | ((now.getSeconds() >> 1) & 0x1F);
+    var dosDate = (((now.getFullYear()-1980) & 0x7F) << 9) | (((now.getMonth()+1) & 0xF) << 5) | (now.getDate() & 0x1F);
+
+    files.forEach(function(f){
+      var nameBytes = new TextEncoder().encode(f.name);
+      var crc = crc32(f.bytes);
+      var size = f.bytes.length;
+
+      var localHeader = new Uint8Array([0x50,0x4b,0x03,0x04].concat(
+        u16(20), u16(0), u16(0), u16(dosTime), u16(dosDate),
+        u32(crc), u32(size), u32(size), u16(nameBytes.length), u16(0)
+      ));
+      localParts.push(localHeader, nameBytes, f.bytes);
+
+      var centralHeader = new Uint8Array([0x50,0x4b,0x01,0x02].concat(
+        u16(20), u16(20), u16(0), u16(0), u16(dosTime), u16(dosDate),
+        u32(crc), u32(size), u32(size), u16(nameBytes.length), u16(0), u16(0),
+        u16(0), u16(0), u32(0), u32(offset)
+      ));
+      centralParts.push(centralHeader, nameBytes);
+
+      offset += localHeader.length + nameBytes.length + size;
+    });
+
+    var centralOffset = offset;
+    var centralSize = centralParts.reduce(function(s,p){ return s + p.length; }, 0);
+    var eocd = new Uint8Array([0x50,0x4b,0x05,0x06].concat(
+      u16(0), u16(0), u16(files.length), u16(files.length),
+      u32(centralSize), u32(centralOffset), u16(0)
+    ));
+
+    return new Blob(localParts.concat(centralParts, [eocd]), {type:'application/zip'});
+  }
+  window.savePhotosOnly = function(){
+    var files = [];
+    var n = 0;
+    data.entries.forEach(function(en){
+      en.photos.forEach(function(pid){
+        var p = data.photos.filter(function(x){ return x.id===pid; })[0];
+        if(!p) return;
+        n++;
+        var safeTime = (en.time || 'photo').replace(/[:：]/g, '');
+        files.push({ name: String(n).padStart(2,'0') + '_' + safeTime + '.jpg', bytes: dataUrlToBytes(p.dataUrl) });
+      });
+    });
+    if(!files.length) return;
+    var blob = buildZipBlob(files);
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = (data.title || '写真') + '_photos.zip';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
+  };
+  if(data.entries.some(function(en){ return en.photos.length; })) document.getElementById('savePhotosBtn').style.display = '';
+
   var body = data.entries.map(function(en, i){
     var imgs = en.photos.map(function(pid){
       var p = data.photos.filter(function(x){ return x.id===pid; })[0];
