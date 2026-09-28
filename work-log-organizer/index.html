@@ -356,7 +356,13 @@ function compressImage(file, maxDim, quality){
         ctx.fillStyle = '#fff';
         ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        const compressed = canvas.toDataURL('image/jpeg', quality);
+        // すでに小さく圧縮済みのJPEGを保存し直すと、かえって大きくなることがある。
+        // 縮小が不要で再圧縮の方が大きいなら、元の写真をそのまま使う。
+        const original = ev.target.result;
+        const keepOriginal = width === img.width && height === img.height
+          && /^data:image\/jpeg/.test(original) && original.length <= compressed.length;
+        const dataUrl = keepOriginal ? original : compressed;
         resolve({ dataUrl, originalSize: file.size, compressedSize: Math.round(dataUrl.length * 0.75) });
       };
       img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
@@ -389,7 +395,10 @@ function recompressDataUrl(dataUrl, maxDim, quality){
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, width, height);
       ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL('image/jpeg', quality));
+      const out = canvas.toDataURL('image/jpeg', quality);
+      const keepOriginal = width === img.width && height === img.height
+        && /^data:image\/jpeg/.test(dataUrl) && dataUrl.length <= out.length;
+      resolve(keepOriginal ? dataUrl : out);
     };
     img.onerror = () => reject(new Error('画像の再圧縮に失敗しました'));
     img.src = dataUrl;
