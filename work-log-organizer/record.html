@@ -116,10 +116,11 @@
     width:100%; border:none; background:transparent; font-family:var(--sans); font-size:14.5px;
     resize:none; min-height:22px; padding:0; white-space:pre-wrap;
   }
-  .entry-photos{display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;}
-  .photo-wrap{position:relative; width:64px; height:64px;}
+  .entry-photos{display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; align-items:flex-start;}
+  /* 高さだけ揃えて、幅は撮影した比率のまま（4:3なら横長）にする。正方形に切り取らない。 */
+  .photo-wrap{position:relative; height:64px;}
   .photo-wrap img{
-    width:64px;height:64px;object-fit:cover;border-radius:6px; border:1px solid var(--line); cursor:zoom-in; display:block;
+    height:64px;width:auto;max-width:128px;object-fit:contain;border-radius:6px; border:1px solid var(--line); cursor:zoom-in; display:block;
   }
   .photo-edit-btn{
     position:absolute; bottom:-4px; right:-4px; width:22px;height:22px;border-radius:50%;
@@ -925,10 +926,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   document.getElementById('report').innerHTML = data.entries.map((en, i)=>{
     const imgs = en.photos.map(url =>
-      '<img src="' + url + '" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:4px;cursor:zoom-in;" onclick="openLB(this.src)">'
+      '<img src="' + url + '" style="width:100%;height:auto;display:block;border-radius:4px;cursor:zoom-in;" onclick="openLB(this.src)">'
     ).join('');
     const photoBlock = en.photos.length
-      ? '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(calc(200px * var(--scale)),1fr));gap:10px;margin-top:12px;">' + imgs + '</div>'
+      ? '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(calc(200px * var(--scale)),1fr));align-items:start;gap:10px;margin-top:12px;">' + imgs + '</div>'
       : '';
     return '<section style="border-left:4px solid #3d5a6c;padding:14px 16px;margin-bottom:18px;background:#fdfcfa;border:1px solid #c9c2b2;border-radius:2px;">'
       + '<div style="font-family:monospace;font-size:calc(15px * var(--scale));color:#75705f;font-weight:bold;">' + esc(en.time || ('記録 ' + (i+1))) + '</div>'

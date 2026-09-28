@@ -116,7 +116,7 @@
   }
   .entry-photos{display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;}
   .entry-photo-item{position:relative;}
-  .entry-photos img{width:56px;height:56px;object-fit:cover;border-radius:2px; border:1px solid var(--line); display:block;}
+  .entry-photos img{height:56px;width:auto;max-width:112px;object-fit:contain;border-radius:2px; border:1px solid var(--line); display:block;}
   .entry-photo-item .rm{
     position:absolute; top:-6px; right:-6px; width:17px;height:17px;border-radius:50%;
     background:var(--rust); color:#fff; border:1px solid #fff; font-size:11px; line-height:15px;
@@ -848,10 +848,10 @@ h1{border-bottom:3px solid #1c2321;padding-bottom:10px;font-size:26px;}
   var body = data.entries.map(function(en, i){
     var imgs = en.photos.map(function(pid){
       var p = data.photos.filter(function(x){ return x.id===pid; })[0];
-      return p ? '<img src="'+p.dataUrl+'" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:4px;cursor:zoom-in;" onclick="openLB(this.src)">' : '';
+      return p ? '<img src="'+p.dataUrl+'" style="width:100%;height:auto;display:block;border-radius:4px;cursor:zoom-in;" onclick="openLB(this.src)">' : '';
     }).join('');
     var photoBlock = en.photos.length
-      ? '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(calc(200px * var(--scale)),1fr));gap:10px;margin-top:12px;">'+imgs+'</div>'
+      ? '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(calc(200px * var(--scale)),1fr));align-items:start;gap:10px;margin-top:12px;">'+imgs+'</div>'
       : '';
     return '<section style="border-left:4px solid #3d5a6c;padding:14px 16px;margin-bottom:18px;background:#fdfcfa;border:1px solid #c9c2b2;border-radius:2px;">'
       + '<div style="font-family:monospace;font-size:calc(15px * var(--scale));color:#75705f;font-weight:bold;">'+esc(en.time || ('記録 ' + (i+1)))+'</div>'
