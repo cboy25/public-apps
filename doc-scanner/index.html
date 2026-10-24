@@ -159,7 +159,7 @@
   </div>
   <div class="ed-bar">
     <div id="cropBar">
-      <p class="ed-hint">○ をドラッグして書類の四隅に合わせてください</p>
+      <p class="ed-hint">○ をドラッグして書類の四隅に合わせてください<br><span id="cvState"></span></p>
       <div class="row">
         <button class="tool" id="edAuto">自動検出</button>
         <button class="tool" id="edFull">画像全体</button>
@@ -175,6 +175,7 @@
       <div class="row">
         <button class="tool" id="edRotL">↺ 左に回転</button>
         <button class="tool" id="edRotR">↻ 右に回転</button>
+        <button class="tool" id="edDeskew">傾き自動補正</button>
       </div>
       <div class="row">
         <button class="btn" id="edSave">保存</button>
@@ -195,6 +196,9 @@ const MAX_OUT = 2200;   // 補正後画像の長辺上限(px)
 const DETECT = 360;     // 輪郭検出用の縮小サイズ(px)
 const FULL = [[0,0],[1,0],[1,1],[0,1]];
 const INSET = [[.05,.05],[.95,.05],[.95,.95],[.05,.95]];
+// 高精度な輪郭検出に使う OpenCV.js(初回のみダウンロードし、以後は sw.js が端末に保存した分を使う)
+const CV_URL = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js';
+const CV_WAIT = 6000;   // 撮影時に OpenCV の準備を待つ上限(ms)。超えたら簡易検出に切り替える
 
 const $ = s => document.querySelector(s);
 const pages = [];            // {id, order, src, w, h, corners, filter, rot, out, ow, oh}
@@ -336,6 +340,200 @@ function quadArea(q){
   return Math.abs(a) / 2;
 }
 
+/* ---------- OpenCV.js による検出 ---------- */
+let cvP = null, cvState = 'idle';
+function setCvState(s){
+  cvState = s;
+  const el = $('#cvState');
+  if(el) el.textContent = {loading:'高精度検出を準備中…', ready:'高精度検出: 有効', failed:'簡易検出モード(高精度検出を読み込めませんでした)'}[s] || '';
+}
+// cv オブジェクト自身が then を持つため、Promise の解決値に直接渡すと無限ループになる。必ず {cv} で包んで受け渡す
+function loadCv(){
+  if(cvP) return cvP;
+  setCvState('loading');
+  cvP = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = CV_URL; s.async = true; s.crossOrigin = 'anonymous';
+    s.onerror = () => rej(new Error('OpenCV.js を読み込めませんでした'));
+    s.onload = () => {
+      const t0 = Date.now();
+      (function poll(){
+        if(window.cv && window.cv.Mat) res({cv:window.cv});
+        else if(Date.now() - t0 > 60000) rej(new Error('OpenCV.js の初期化に失敗しました'));
+        else setTimeout(poll, 50);
+      })();
+    };
+    document.head.appendChild(s);
+  }).then(box => { setCvState('ready'); return box; }, err => { console.warn(err); setCvState('failed'); return {cv:null}; });
+  return cvP;
+}
+const cvReady = ms => Promise.race([loadCv(), new Promise(r => setTimeout(() => r({cv:null}), ms))]);
+
+// エッジ(輪郭)から凸四角形を探す。文字はクロージングで消し、明るさと彩度の両方で試す
+function detectCv(cv, src){
+  const s = 640 / Math.max(src.width, src.height);
+  const w = Math.round(src.width * s), h = Math.round(src.height * s);
+  const c = mkCanvas(w, h); ctx2d(c).drawImage(src, 0, 0, w, h);
+  const mats = [], keep = m => (mats.push(m), m);
+  const cands = [];
+  const consider = pts => {
+    const area = quadArea(pts);
+    if(area < 0.12 * w * h || area > 0.98 * w * h) return;
+    // 2つ以上の角が画像の端に張り付いているのは背景の切れ目なので除外
+    const onBorder = pts.filter(([x, y]) => x <= 2 || y <= 2 || x >= w - 3 || y >= h - 3).length;
+    if(onBorder >= 2) return;
+    cands.push({area, pts});
+  };
+  // 四角形の各辺が実際のエッジの上に乗っている割合(一番弱い辺の値)
+  const support = (pts, ed) => {
+    let worst = 1;
+    for(let i = 0; i < 4; i++){
+      const a = pts[i], b = pts[(i + 1) % 4];
+      let hit = 0;
+      for(let k = 0; k < 40; k++){
+        const t = 0.05 + 0.9 * k / 39, x = Math.round(a[0] + (b[0] - a[0]) * t), y = Math.round(a[1] + (b[1] - a[1]) * t);
+        if(x >= 0 && y >= 0 && x < w && y < h && ed[y * w + x]) hit++;
+      }
+      worst = Math.min(worst, hit / 40);
+    }
+    return worst;
+  };
+  const scan = bin => {
+    const contours = keep(new cv.MatVector()), hier = keep(new cv.Mat());
+    cv.findContours(bin, contours, hier, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+    for(let i = 0; i < contours.size(); i++){
+      const cnt = contours.get(i);
+      const area = cv.contourArea(cnt);
+      if(area >= 0.1 * w * h){
+        const peri = cv.arcLength(cnt, true), approx = new cv.Mat();
+        cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+        if(approx.rows === 4 && cv.isContourConvex(approx)){
+          const d = approx.data32S; consider([[d[0], d[1]], [d[2], d[3]], [d[4], d[5]], [d[6], d[7]]]);
+        }else if(area >= 0.2 * w * h){
+          // 角が欠けている・丸まっている場合は凸包を四角形に近似する
+          const hull = new cv.Mat(); cv.convexHull(cnt, hull, false, true);
+          const hp = cv.arcLength(hull, true);
+          for(const eps of [0.02, 0.04, 0.06, 0.08]){
+            const a2 = new cv.Mat(); cv.approxPolyDP(hull, a2, eps * hp, true);
+            const ok = a2.rows === 4;
+            if(ok){ const d = a2.data32S; consider([[d[0], d[1]], [d[2], d[3]], [d[4], d[5]], [d[6], d[7]]]); }
+            a2.delete();
+            if(ok) break;
+          }
+          hull.delete();
+        }
+        approx.delete();
+      }
+      cnt.delete();
+    }
+  };
+  try{
+    const rgba = keep(cv.imread(c)), rgb = keep(new cv.Mat()), gray = keep(new cv.Mat()), hsv = keep(new cv.Mat());
+    cv.cvtColor(rgba, rgb, cv.COLOR_RGBA2RGB);
+    cv.cvtColor(rgb, gray, cv.COLOR_RGB2GRAY);
+    cv.cvtColor(rgb, hsv, cv.COLOR_RGB2HSV);
+    const ch = keep(new cv.MatVector()); cv.split(hsv, ch);
+    const sat = keep(ch.get(1));
+    const kClose = keep(cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(9, 9)));
+    const kDil = keep(cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3)));
+    const kWide = keep(cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(7, 7)));
+    const edgeAll = keep(cv.Mat.zeros(h, w, cv.CV_8UC1));
+    for(const base of [gray, sat]){
+      const sm = keep(new cv.Mat());
+      cv.morphologyEx(base, sm, cv.MORPH_CLOSE, kClose);
+      cv.GaussianBlur(sm, sm, new cv.Size(5, 5), 0);
+      for(const [lo, hi] of [[30, 90], [10, 40], [60, 180]]){
+        const e = keep(new cv.Mat());
+        cv.Canny(sm, e, lo, hi);
+        cv.dilate(e, e, kDil);
+        cv.bitwise_or(edgeAll, e, edgeAll);
+        scan(e);
+      }
+      const bin = keep(new cv.Mat());
+      cv.threshold(sm, bin, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+      scan(bin);
+    }
+    // 背景の物と紙がつながった誤検出を除くため、4辺ともエッジに沿っている候補だけを残し、その中で最大のものを選ぶ
+    cv.dilate(edgeAll, edgeAll, kWide);
+    const ed = edgeAll.data;
+    let best = null;
+    for(const c of cands) if(support(c.pts, ed) >= 0.6 && (!best || c.area > best.area)) best = c;
+    return best && best.pts.map(([x, y]) => [(x + 0.5) / w, (y + 0.5) / h]);
+  }finally{
+    mats.forEach(m => m.delete());
+  }
+}
+
+/* ---------- 角の微調整: 各辺を紙の縁に直線で当てはめ、その交点を角にする ---------- */
+function fitLine(pts){
+  const fit = p => {
+    const n = p.length; let mx = 0, my = 0;
+    p.forEach(([x, y]) => { mx += x; my += y; }); mx /= n; my /= n;
+    let sxx = 0, syy = 0, sxy = 0;
+    p.forEach(([x, y]) => { sxx += (x - mx) ** 2; syy += (y - my) ** 2; sxy += (x - mx) * (y - my); });
+    const a = Math.atan2(2 * sxy, sxx - syy) / 2;
+    return {p:[mx, my], d:[Math.cos(a), Math.sin(a)]};
+  };
+  const lineDist = (l, [x, y]) => Math.abs((x - l.p[0]) * l.d[1] - (y - l.p[1]) * l.d[0]);
+  let l = fit(pts);
+  const inl = pts.filter(p => lineDist(l, p) < 1.5);
+  if(inl.length >= Math.max(6, pts.length * 0.5)) l = fit(inl);
+  else return null;
+  return l;
+}
+function intersect(a, b){
+  const den = a.d[0] * b.d[1] - a.d[1] * b.d[0];
+  if(Math.abs(den) < 1e-6) return null;
+  const t = ((b.p[0] - a.p[0]) * b.d[1] - (b.p[1] - a.p[1]) * b.d[0]) / den;
+  return [a.p[0] + a.d[0] * t, a.p[1] + a.d[1] * t];
+}
+function refineCorners(src, corners){
+  const s = Math.min(1, 1000 / Math.max(src.width, src.height));
+  const w = Math.round(src.width * s), h = Math.round(src.height * s);
+  const c = mkCanvas(w, h), cx = ctx2d(c); cx.drawImage(src, 0, 0, w, h);
+  const L = boxBlur(luminance(cx.getImageData(0, 0, w, h).data, w * h), w, h, 1);
+  const at = (x, y) => { x = Math.round(x); y = Math.round(y); return x < 0 || y < 0 || x >= w || y >= h ? null : L[y * w + x]; };
+  const pts = corners.map(([x, y]) => [x * w, y * h]);
+  const r = Math.max(4, Math.round(Math.max(w, h) * 0.02));
+  const lines = [];
+  for(let i = 0; i < 4; i++){
+    const a = pts[i], b = pts[(i + 1) % 4], len = dist(a, b);
+    const orig = {p:a, d:[(b[0] - a[0]) / len, (b[1] - a[1]) / len]};
+    if(len < 30){ lines.push(orig); continue; }
+    const nx = -orig.d[1], ny = orig.d[0], N = Math.min(80, Math.floor(len / 5)), found = [];
+    for(let k = 0; k <= N; k++){
+      const t = 0.1 + 0.8 * k / N, px = a[0] + (b[0] - a[0]) * t, py = a[1] + (b[1] - a[1]) * t;
+      let bestScore = 0, bo = 0;
+      for(let o = -r; o <= r; o++){
+        const p1 = at(px + nx * (o + 1), py + ny * (o + 1)), p0 = at(px + nx * (o - 1), py + ny * (o - 1));
+        if(p1 === null || p0 === null) continue;
+        // 元の線に近い境目をやや優先し、紙の内側の罫線などに引っ張られにくくする
+        const score = Math.abs(p1 - p0) * (1 - 0.4 * Math.abs(o) / r);
+        if(score > bestScore){ bestScore = score; bo = o; }
+      }
+      if(bestScore > 10) found.push([px + nx * bo, py + ny * bo]);
+    }
+    // 縁が画面外・不明瞭な辺は元の線のまま
+    lines.push(found.length >= N * 0.4 ? (fitLine(found) || orig) : orig);
+  }
+  const out = [];
+  for(let i = 0; i < 4; i++){
+    const p = intersect(lines[(i + 3) % 4], lines[i]);
+    if(!p || dist(p, pts[i]) > r * 2) return corners;
+    out.push([Math.min(1, Math.max(0, p[0] / w)), Math.min(1, Math.max(0, p[1] / h))]);
+  }
+  return quadArea(out) > 0.5 * quadArea(corners) ? out : corners;
+}
+
+async function autoCorners(src){
+  let c = null;
+  const {cv} = await cvReady(CV_WAIT);
+  if(cv){ try{ c = detectCv(cv, src); }catch(e){ console.warn(e); } }
+  else if(cvState === 'loading') toast('高精度検出を準備中のため、簡易検出を使いました');
+  if(!c) c = detectCorners(src);
+  return c && refineCorners(src, orderCorners(c));
+}
+
 function detectCorners(src){
   const s = DETECT / Math.max(src.width, src.height);
   const w = Math.max(8, Math.round(src.width * s)), h = Math.max(8, Math.round(src.height * s));
@@ -380,11 +578,48 @@ function homography(from, to){
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
+// 撮影時の遠近から紙の本当の縦横比(幅/高さ)を求める(Zhang & He の方法)。
+// 画像の中心をカメラの光軸と仮定する。推定が不安定なとき(ほぼ真上から撮った時など)は null
+function trueAspect(q, sw, sh){
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const u0 = sw / 2, v0 = sh / 2;
+  const m1 = [...q[0], 1], m2 = [...q[1], 1], m3 = [...q[3], 1], m4 = [...q[2], 1];
+  const c14 = cross(m1, m4);
+  const k2 = dot(c14, m3) / dot(cross(m2, m4), m3), k3 = dot(c14, m2) / dot(cross(m3, m4), m2);
+  const n2 = m2.map((v, i) => k2 * v - m1[i]), n3 = m3.map((v, i) => k3 * v - m1[i]);
+  const f2 = -((n2[0] * n3[0] - (n2[0] * n3[2] + n2[2] * n3[0]) * u0 + n2[2] * n3[2] * u0 * u0)
+             + (n2[1] * n3[1] - (n2[1] * n3[2] + n2[2] * n3[1]) * v0 + n2[2] * n3[2] * v0 * v0)) / (n2[2] * n3[2]);
+  const diag = Math.hypot(sw, sh);
+  if(!(f2 > 0) || Math.sqrt(f2) < 0.3 * diag || Math.sqrt(f2) > 4 * diag) return null;
+  const norm = n => { const a = n[0] - u0 * n[2], b = n[1] - v0 * n[2]; return (a * a + b * b) / f2 + n[2] * n[2]; };
+  const r = Math.sqrt(norm(n2) / norm(n3));
+  return isFinite(r) && r > 0 ? r : null;
+}
+
+// A判・B判(√2)、レター、はがき、名刺に近い比率ならその比率にそろえる
+const STD_RATIOS = [Math.SQRT2, 279.4 / 215.9, 148 / 100, 91 / 55];
+function snapAspect(r){
+  const long = Math.max(r, 1 / r);
+  const std = STD_RATIOS.find(s => Math.abs(long / s - 1) < 0.03);
+  return std ? (r >= 1 ? std : 1 / std) : r;
+}
+
+function outputSize(q, sw, sh){
+  const [tl, tr, br, bl] = q;
+  const W0 = (dist(tl, tr) + dist(bl, br)) / 2, H0 = (dist(tl, bl) + dist(tr, br)) / 2;
+  let r = trueAspect(q, sw, sh);
+  // 辺の長さからの概算と大きく食い違う推定は信用しない
+  if(!r || Math.abs(Math.log(r / (W0 / H0))) > 0.4) r = W0 / H0;
+  r = snapAspect(r);
+  const H = Math.sqrt(W0 * H0 / r);
+  return [H * r, H];
+}
+
 function warp(src, corners){
   const sw = src.width, sh = src.height;
   const q = corners.map(([x, y]) => [x * sw, y * sh]);
-  const [tl, tr, br, bl] = q;
-  let W = (dist(tl, tr) + dist(bl, br)) / 2, H = (dist(tl, bl) + dist(tr, br)) / 2;
+  let [W, H] = outputSize(q, sw, sh);
   const k = Math.min(1, MAX_OUT / Math.max(W, H));
   W = Math.max(1, Math.round(W * k)); H = Math.max(1, Math.round(H * k));
   const m = homography([[0, 0], [W, 0], [W, H], [0, H]], q);
@@ -472,6 +707,59 @@ function applyFilter(src, mode){
   }
   ocx.putImageData(id, 0, 0);
   return out;
+}
+
+// 補正後の画像に残ったわずかな傾き(±4°以内)を文字の行の向きから求める
+function skewAngle(src){
+  const s = Math.min(1, 900 / Math.max(src.width, src.height));
+  const w = Math.round(src.width * s), h = Math.round(src.height * s);
+  const c = mkCanvas(w, h), cx = ctx2d(c); cx.drawImage(src, 0, 0, w, h);
+  const d = cx.getImageData(0, 0, w, h).data, L = luminance(d, w * h), bg = paperLevel(L, w, h);
+  const xs = [], ys = [];
+  let pr = 0, pg = 0, pb = 0, pn = 0;
+  const mx = Math.round(w * 0.04), my = Math.round(h * 0.04);
+  for(let y = my; y < h - my; y++) for(let x = mx; x < w - mx; x++){
+    const i = y * w + x;
+    if(L[i] < bg[i] * 0.6){ xs.push(x - w / 2); ys.push(y - h / 2); }
+    else if(L[i] > bg[i] * 0.92){ pr += d[i * 4]; pg += d[i * 4 + 1]; pb += d[i * 4 + 2]; pn++; }
+  }
+  const fill = pn ? `rgb(${pr / pn | 0},${pg / pn | 0},${pb / pn | 0})` : '#fff';
+  if(xs.length < w * h * 0.003) return {deg:0, fill};
+  const step = Math.max(1, Math.floor(xs.length / 150000));
+  const bins = new Float32Array(Math.ceil(Math.hypot(w, h)) + 4), off = bins.length / 2;
+  // 回転させたときに行が揃う(横方向の投影が鋭くなる)角度ほど得点が高い
+  const score = deg => {
+    const t = deg * Math.PI / 180, sn = Math.sin(t), cs = Math.cos(t);
+    bins.fill(0);
+    for(let i = 0; i < xs.length; i += step) bins[(ys[i] * cs - xs[i] * sn + off) | 0]++;
+    let sum = 0; for(let i = 0; i < bins.length; i++) sum += bins[i] * bins[i];
+    return sum;
+  };
+  let best = 0, bs = score(0);
+  const s0 = bs;
+  for(let a = -4; a <= 4.001; a += 0.25){ const v = score(a); if(v > bs){ bs = v; best = a; } }
+  const coarse = best;
+  for(let a = coarse - 0.25; a <= coarse + 0.25; a += 0.05){ const v = score(a); if(v > bs){ bs = v; best = a; } }
+  // はっきりした行が見つからない(図や写真が中心の)ページは触らない
+  if(Math.abs(best) < 0.15 || bs < s0 * 1.03) return {deg:0, fill};
+  return {deg:Math.round(best * 100) / 100, fill};
+}
+
+function straighten(src, on){
+  if(!on) return {canvas:src, deg:0};
+  const {deg, fill} = skewAngle(src);
+  if(!deg) return {canvas:src, deg:0};
+  const out = mkCanvas(src.width, src.height), cx = ctx2d(out);
+  cx.fillStyle = fill; cx.fillRect(0, 0, out.width, out.height);
+  cx.imageSmoothingQuality = 'high';
+  cx.translate(out.width / 2, out.height / 2);
+  cx.rotate(-deg * Math.PI / 180);
+  cx.drawImage(src, -src.width / 2, -src.height / 2);
+  return {canvas:out, deg};
+}
+
+function processPage(src, corners, deskew, filter, rot){
+  return rotate(applyFilter(straighten(warp(src, corners), deskew).canvas, filter), rot);
 }
 
 function rotate(src, rot){
@@ -570,7 +858,8 @@ async function importFiles(files){
     busy(true, '読み込み中…'); await nextFrame();
     try{
       const src = await blobToCanvas(files[0], MAX_SRC);
-      openEditor(null, src);
+      busy(true, '書類を検出中…'); await nextFrame();
+      await openEditor(null, src);
     }catch(err){ alert(err.message); }
     finally{ busy(false); }
     return;
@@ -581,28 +870,31 @@ async function importFiles(files){
     busy(true, `取り込み中… ${++done}/${files.length}`); await nextFrame();
     try{
       const src = await blobToCanvas(f, MAX_SRC);
-      await savePage({rec:null, src, corners:detectCorners(src) || FULL, filter:lastFilter, rot:0});
+      await savePage({rec:null, src, corners:(await autoCorners(src)) || FULL, deskew:true, filter:lastFilter, rot:0});
     }catch(err){ console.warn(err); toast(`${done}枚目を読み込めませんでした`); }
   }
   busy(false);
   toast(`${files.length}枚を追加しました。タップで範囲を調整できます`);
 }
 
-async function savePage({rec, src, srcBlob, corners, filter, rot, out}){
-  if(!out) out = rotate(applyFilter(warp(src, corners), filter), rot);
+let persistAsked = false;
+async function savePage({rec, src, srcBlob, corners, deskew, filter, rot, out}){
+  if(!out) out = processPage(src, corners, deskew, filter, rot);
   const outBlob = await toBlob(out, 0.85);
   if(!srcBlob) srcBlob = rec ? rec.src : await toBlob(src, 0.92);
   const p = rec || {id:Date.now().toString(36) + Math.random().toString(36).slice(2, 6), order:pages.length};
-  Object.assign(p, {src:srcBlob, w:src.width, h:src.height, corners, filter, rot, out:outBlob, ow:out.width, oh:out.height});
+  Object.assign(p, {src:srcBlob, w:src.width, h:src.height, corners, deskew, filter, rot, out:outBlob, ow:out.width, oh:out.height});
   dropThumb(p.id);
   if(!rec) pages.push(p);
   renderPages();
   await dbPut(p);
+  // 端末の空き容量が少ないときにブラウザがスキャンを自動削除しないよう依頼する
+  if(!persistAsked && navigator.storage && navigator.storage.persist){ persistAsked = true; navigator.storage.persist().catch(() => {}); }
   return p;
 }
 
 /* ================= エディタ ================= */
-const ed = {rec:null, src:null, corners:null, filter:'enhance', rot:0, step:'crop', warped:null, warpKey:'', out:null, active:-1, grab:[0, 0], view:null};
+const ed = {rec:null, src:null, corners:null, deskew:true, skewDeg:0, filter:'enhance', rot:0, step:'crop', warped:null, warpKey:'', out:null, active:-1, grab:[0, 0], view:null};
 const cropCv = $('#cropCanvas');
 
 async function openEditor(rec, src){
@@ -614,7 +906,8 @@ async function openEditor(rec, src){
   }
   Object.assign(ed, {
     rec, src,
-    corners: rec ? rec.corners.map(p => p.slice()) : (detectCorners(src) || INSET),
+    corners: rec ? rec.corners.map(p => p.slice()) : ((await autoCorners(src)) || INSET),
+    deskew: rec ? rec.deskew !== false : true,
     filter: rec ? rec.filter : lastFilter,
     rot: rec ? rec.rot : 0,
     warped:null, warpKey:'', out:null, active:-1,
@@ -643,10 +936,13 @@ function showStep(step){
 
 $('#edCancel').onclick = () => ed.step === 'crop' ? closeEditor() : showStep('crop');
 $('#edNext').onclick = () => { ed.corners = orderCorners(ed.corners); showStep('filter'); };
-$('#edAuto').onclick = () => {
-  const c = detectCorners(ed.src);
-  if(c){ ed.corners = c; drawCrop(); }
-  else toast('書類の輪郭を見つけられませんでした。手動で合わせてください');
+$('#edAuto').onclick = async () => {
+  busy(true, '書類を検出中…'); await nextFrame();
+  try{
+    const c = await autoCorners(ed.src);
+    if(c){ ed.corners = c; drawCrop(); }
+    else toast('書類の輪郭を見つけられませんでした。手動で合わせてください');
+  }finally{ busy(false); }
 };
 $('#edFull').onclick = () => { ed.corners = FULL.map(p => p.slice()); drawCrop(); };
 
@@ -724,8 +1020,14 @@ async function renderResult(){
   document.querySelectorAll('#filterChips .chip').forEach(b => b.classList.toggle('active', b.dataset.f === ed.filter));
   busy(true); await nextFrame();
   try{
-    const key = JSON.stringify(ed.corners);
-    if(ed.warpKey !== key){ ed.warped = warp(ed.src, ed.corners); ed.warpKey = key; }
+    const key = JSON.stringify([ed.corners, ed.deskew]);
+    if(ed.warpKey !== key){
+      const st = straighten(warp(ed.src, ed.corners), ed.deskew);
+      ed.warped = st.canvas; ed.skewDeg = st.deg; ed.warpKey = key;
+    }
+    const db = $('#edDeskew');
+    db.textContent = ed.deskew ? `傾き自動補正: ON${ed.skewDeg ? `(${ed.skewDeg > 0 ? '+' : ''}${ed.skewDeg}°)` : ''}` : '傾き自動補正: OFF';
+    db.style.borderColor = ed.deskew ? 'var(--accent)' : '';
     ed.out = rotate(applyFilter(ed.warped, ed.filter), ed.rot);
     const rc = $('#resultCanvas');
     rc.width = ed.out.width; rc.height = ed.out.height;
@@ -750,10 +1052,11 @@ $('#filterChips').onclick = e => {
 };
 $('#edRotL').onclick = () => { ed.rot = (ed.rot + 270) % 360; renderResult(); };
 $('#edRotR').onclick = () => { ed.rot = (ed.rot + 90) % 360; renderResult(); };
+$('#edDeskew').onclick = () => { ed.deskew = !ed.deskew; renderResult(); };
 
 function saveFromEditor(){
   if(!ed.out) return Promise.resolve();
-  const snap = {rec:ed.rec, src:ed.src, corners:ed.corners, filter:ed.filter, rot:ed.rot, out:ed.out};
+  const snap = {rec:ed.rec, src:ed.src, corners:ed.corners, deskew:ed.deskew, filter:ed.filter, rot:ed.rot, out:ed.out};
   closeEditor();
   return savePage(snap).catch(err => alert('保存に失敗しました: ' + err.message));
 }
@@ -853,6 +1156,9 @@ $('#docName').addEventListener('change', () => { try{ localStorage.setItem('doc-
 (async () => {
   try{ $('#docName').value = localStorage.getItem('doc-scanner-name') || ''; }catch(e){}
   if(!window.indexedDB){ idbOk = false; $('#storeWarn').hidden = false; }
+  // OpenCV.js は大きいので起動直後から裏で読み込んでおく。sw.js が端末に保存し、次回からはオフラインでも使える
+  if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(e => console.warn(e));
+  loadCv();
   const saved = await dbAll();
   if(saved && saved.length){
     saved.sort((a, b) => a.order - b.order).forEach(p => pages.push(p));
