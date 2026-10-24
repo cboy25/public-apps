@@ -21,7 +21,10 @@
   body{background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.6;}
   button{font-family:var(--sans);}
   .wrap{max-width:760px;margin:0 auto;padding:16px 16px calc(150px + var(--safe-b));}
-  header{border-bottom:3px solid var(--ink);padding-bottom:10px;margin-bottom:16px;}
+  header{border-bottom:3px solid var(--ink);padding-bottom:10px;margin-bottom:16px;display:flex;align-items:flex-start;gap:10px;}
+  header .hd-main{flex:1;min-width:0;}
+  header .ver{font-family:var(--mono);font-size:10px;color:#75705f;margin-left:6px;letter-spacing:0;text-transform:none;}
+  .gear{background:#fff;border:1px solid var(--line);border-radius:2px;font-size:13px;font-weight:700;padding:8px 10px;cursor:pointer;color:var(--ink);white-space:nowrap;}
   header .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--rust);text-transform:uppercase;}
   header h1{margin:2px 0 0;font-size:21px;font-weight:800;}
   header p{margin:0;font-size:12px;color:#5a5a52;}
@@ -87,6 +90,36 @@
   .ed-hint{font-size:11px;color:#9a9a9a;text-align:center;margin:0 0 8px;}
   [hidden]{display:none !important;}
 
+  /* ---- settings (full screen) ---- */
+  .settings{position:fixed;inset:0;background:var(--paper);z-index:30;display:none;flex-direction:column;height:100vh;height:100dvh;}
+  .settings.open{display:flex;}
+  .st-top{display:flex;align-items:center;padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top,0px));background:var(--ink);color:#fff;}
+  .st-top h2{flex:1;margin:0;font-size:16px;}
+  .st-top button{background:none;border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;padding:4px 0 4px 12px;}
+  .st-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+  .st-in{max-width:760px;margin:0 auto;padding:14px 16px calc(32px + var(--safe-b));}
+  .st-sec{margin-bottom:18px;}
+  .st-sec h3{font-size:11px;color:var(--rust);font-family:var(--mono);letter-spacing:.08em;margin:0 0 6px;}
+  .st-card{background:#fff;border:1px solid var(--line);}
+  .st-row{display:flex;align-items:center;gap:12px;padding:12px;border-bottom:1px solid var(--paper-dim);}
+  .st-row:last-child{border-bottom:none;}
+  .st-row .lbl{flex:1;font-size:14px;min-width:0;}
+  .st-row .lbl small{display:block;font-size:11px;color:#75705f;line-height:1.5;margin-top:2px;}
+  .st-row .val{font-family:var(--mono);font-size:13px;color:var(--steel-dark);text-align:right;white-space:nowrap;}
+  .st-row input[type=text]{width:9em;}
+  .st-row .btn{font-size:12px;padding:7px 12px;white-space:nowrap;}
+  .switch{position:relative;width:48px;height:28px;flex-shrink:0;}
+  .switch input{position:absolute;opacity:0;width:0;height:0;}
+  .switch span{position:absolute;inset:0;background:#c9c2b2;border-radius:14px;transition:background .15s;cursor:pointer;}
+  .switch span::after{content:'';position:absolute;left:3px;top:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .15s;box-shadow:0 1px 2px rgba(0,0,0,.3);}
+  .switch input:checked + span{background:var(--ok);}
+  .switch input:checked + span::after{transform:translateX(20px);}
+  .switch input:focus-visible + span{outline:2px solid var(--steel);outline-offset:2px;}
+  .log{list-style:none;margin:0;padding:4px 12px 12px;font-size:12px;color:#5a5a52;}
+  .log li{padding:6px 0;border-top:1px dashed var(--paper-dim);}
+  .log b{font-family:var(--mono);color:var(--steel-dark);margin-right:6px;}
+  .log time{font-family:var(--mono);font-size:11px;color:#75705f;}
+
   .busy{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:40;display:none;align-items:center;justify-content:center;}
   .busy.on{display:flex;}
   .busy div{background:#fff;color:var(--ink);padding:14px 20px;font-size:14px;font-weight:700;border-radius:2px;}
@@ -98,9 +131,12 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Document Scanner</div>
-    <h1>書類スキャナ</h1>
-    <p>撮影 → 四隅を合わせる → 補正 → PDF/画像で保存。データは端末内だけで処理されます。</p>
+    <div class="hd-main">
+      <div class="eyebrow">Document Scanner<span class="ver" id="verBadge"></span></div>
+      <h1>書類スキャナ</h1>
+      <p>撮影 → 四隅を合わせる → 補正 → PDF/画像で保存。データは端末内だけで処理されます。</p>
+    </div>
+    <button class="gear" id="btnSettings" aria-label="設定">⚙ 設定</button>
   </header>
 
   <div class="warn" id="storeWarn" hidden>この環境では端末への保存ができないため、ページを閉じるとスキャンは消えます。先にPDFを保存してください。</div>
@@ -124,13 +160,7 @@
       <button class="btn secondary" id="btnImages">画像(JPEG)で保存</button>
     </div>
     <div class="row" style="margin-top:10px">
-      <label style="font-size:12px;font-weight:700;color:var(--steel-dark)">用紙
-        <select id="paper">
-          <option value="a4">A4に合わせる</option>
-          <option value="fit">画像サイズのまま</option>
-        </select>
-      </label>
-      <span style="flex:1"></span>
+      <span style="font-size:12px;color:#75705f;flex:1" id="paperInfo"></span>
       <button class="btn ghost" id="btnClear">全ページ削除</button>
     </div>
     <p class="hint">「共有」からはメール・LINE・ファイルアプリ等へ直接送れます(対応ブラウザのみ)。</p>
@@ -185,6 +215,60 @@
   </div>
 </div>
 
+<!-- settings -->
+<div class="settings" id="settings" role="dialog" aria-label="設定">
+  <div class="st-top"><h2>設定</h2><button id="stDone">完了</button></div>
+  <div class="st-body"><div class="st-in">
+    <section class="st-sec">
+      <h3>撮影・検出</h3>
+      <div class="st-card">
+        <label class="st-row"><span class="lbl">高精度検出(OpenCV.js)<small id="stCvInfo"></small></span><span class="switch"><input type="checkbox" data-k="hiDetect"><span></span></span></label>
+        <label class="st-row"><span class="lbl">縦横比を標準サイズに合わせる<small>A4・レター・はがき・名刺に近い比率のとき、その比率にそろえます</small></span><span class="switch"><input type="checkbox" data-k="snap"><span></span></span></label>
+        <label class="st-row"><span class="lbl">傾き自動補正<small>新しく撮るページの初期値です。ページごとに仕上がり画面でも切り替えられます</small></span><span class="switch"><input type="checkbox" data-k="deskew"><span></span></span></label>
+      </div>
+    </section>
+    <section class="st-sec">
+      <h3>仕上がり</h3>
+      <div class="st-card">
+        <div class="st-row"><span class="lbl">最初に選ぶ仕上がり</span>
+          <select data-k="filter" aria-label="最初に選ぶ仕上がり">
+            <option value="last">前回と同じ</option><option value="enhance">カラー補正</option><option value="gray">グレー</option><option value="bw">白黒</option><option value="original">元の色</option>
+          </select></div>
+        <div class="st-row"><span class="lbl">保存画質<small>新しく保存・編集したページから適用されます</small></span>
+          <select data-k="quality" aria-label="保存画質">
+            <option value="high">高画質</option><option value="standard">標準</option><option value="light">軽量(メール向け)</option>
+          </select></div>
+      </div>
+    </section>
+    <section class="st-sec">
+      <h3>PDF・ファイル名</h3>
+      <div class="st-card">
+        <div class="st-row"><span class="lbl">PDFの用紙</span>
+          <select data-k="paper" aria-label="PDFの用紙"><option value="a4">A4に合わせる</option><option value="fit">画像サイズのまま</option></select></div>
+        <div class="st-row"><span class="lbl">ファイル名の先頭<small id="stNameEx"></small></span><input type="text" data-k="prefix" autocomplete="off" aria-label="ファイル名の先頭"></div>
+      </div>
+    </section>
+    <section class="st-sec">
+      <h3>データ</h3>
+      <div class="st-card">
+        <div class="st-row"><span class="lbl">保存中のページ</span><span class="val" id="stPages"></span></div>
+        <div class="st-row"><span class="lbl">使用容量<small>スキャン画像とオフライン用データの合計</small></span><span class="val" id="stUsage"></span></div>
+        <div class="st-row"><span class="lbl">オフライン用データ<small id="stCacheInfo"></small></span><button class="btn secondary" id="stClearCache">削除</button></div>
+      </div>
+    </section>
+    <section class="st-sec">
+      <h3>バージョン情報</h3>
+      <div class="st-card">
+        <div class="st-row"><span class="lbl">アプリ</span><span class="val" id="stVer"></span></div>
+        <div class="st-row"><span class="lbl">輪郭検出エンジン</span><span class="val">OpenCV.js 4.10.0</span></div>
+        <div class="st-row"><span class="lbl">更新の確認<small>新しい版があれば取得して再読み込みします</small></span><button class="btn secondary" id="stUpdate">確認</button></div>
+        <ul class="log" id="stLog"></ul>
+      </div>
+    </section>
+    <div style="text-align:center"><button class="btn ghost" id="stReset">設定を初期値に戻す</button></div>
+  </div></div>
+</div>
+
 <div class="busy" id="busy"><div id="busyMsg">処理中…</div></div>
 <div class="toast" id="toast"></div>
 
@@ -192,7 +276,6 @@
 'use strict';
 
 const MAX_SRC = 2400;   // 取り込み画像の長辺上限(px)
-const MAX_OUT = 2200;   // 補正後画像の長辺上限(px)
 const DETECT = 360;     // 輪郭検出用の縮小サイズ(px)
 const FULL = [[0,0],[1,0],[1,1],[0,1]];
 const INSET = [[.05,.05],[.95,.05],[.95,.95],[.05,.95]];
@@ -200,10 +283,28 @@ const INSET = [[.05,.05],[.95,.05],[.95,.95],[.05,.95]];
 const CV_URL = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js';
 const CV_WAIT = 6000;   // 撮影時に OpenCV の準備を待つ上限(ms)。超えたら簡易検出に切り替える
 
+const APP_VERSION = '1.2.0';
+const CHANGELOG = [
+  ['1.2.0', '2026-10-24', '設定画面とバージョン情報を追加。保存画質・最初の仕上がり・PDFの用紙・ファイル名の先頭などを設定可能に'],
+  ['1.1.0', '2026-10-24', 'OpenCV.js による四隅検出、角の微調整、本来の縦横比の推定、傾き自動補正、オフライン対応'],
+  ['1.0.0', '2026-10-24', '初版。撮影・四隅調整・台形補正・影除去・複数ページ・PDF/JPEG保存'],
+];
+
+/* ================= 設定 ================= */
+const SETTINGS_KEY = 'doc-scanner-settings';
+const DEFAULTS = {hiDetect:true, snap:true, deskew:true, filter:'last', quality:'standard', paper:'a4', prefix:'scan'};
+// 補正後画像の長辺上限(px)と JPEG 画質
+const QUALITY = {high:{maxOut:2400, q:0.92}, standard:{maxOut:2200, q:0.85}, light:{maxOut:1600, q:0.7}};
+const settings = {...DEFAULTS};
+try{ Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); }catch(e){}
+function saveSettings(){ try{ localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }catch(e){} }
+const quality = () => QUALITY[settings.quality] || QUALITY.standard;
+
 const $ = s => document.querySelector(s);
 const pages = [];            // {id, order, src, w, h, corners, filter, rot, out, ow, oh}
 const thumbUrls = new Map(); // id -> objectURL
 let lastFilter = 'enhance';
+const defaultFilter = () => settings.filter === 'last' ? lastFilter : settings.filter;
 
 function mkCanvas(w, h){ const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
 function ctx2d(c){ return c.getContext('2d', {willReadFrequently:true}); }
@@ -344,8 +445,8 @@ function quadArea(q){
 let cvP = null, cvState = 'idle';
 function setCvState(s){
   cvState = s;
-  const el = $('#cvState');
-  if(el) el.textContent = {loading:'高精度検出を準備中…', ready:'高精度検出: 有効', failed:'簡易検出モード(高精度検出を読み込めませんでした)'}[s] || '';
+  const text = {loading:'高精度検出を準備中…', ready:'高精度検出: 有効', failed:'簡易検出モード(高精度検出を読み込めませんでした)', off:'高精度検出: オフ(設定で変更できます)'}[s] || '';
+  ['#cvState', '#stCvInfo'].forEach(q => { const el = $(q); if(el) el.textContent = text; });
 }
 // cv オブジェクト自身が then を持つため、Promise の解決値に直接渡すと無限ループになる。必ず {cv} で包んで受け渡す
 function loadCv(){
@@ -364,7 +465,12 @@ function loadCv(){
       })();
     };
     document.head.appendChild(s);
-  }).then(box => { setCvState('ready'); return box; }, err => { console.warn(err); setCvState('failed'); return {cv:null}; });
+  }).then(box => {
+    setCvState(settings.hiDetect ? 'ready' : 'off');
+    // 初回訪問時は sw.js がまだ働いていないので、読み込めた時点で端末に保存しておく(通常はブラウザのキャッシュから取得され再ダウンロードにはならない)
+    if(window.caches) caches.open('doc-scanner-v1').then(async c => { if(!(await c.match(CV_URL))) await c.add(CV_URL); }).catch(e => console.warn(e));
+    return box;
+  }, err => { console.warn(err); setCvState('failed'); return {cv:null}; });
   return cvP;
 }
 const cvReady = ms => Promise.race([loadCv(), new Promise(r => setTimeout(() => r({cv:null}), ms))]);
@@ -527,9 +633,9 @@ function refineCorners(src, corners){
 
 async function autoCorners(src){
   let c = null;
-  const {cv} = await cvReady(CV_WAIT);
+  const {cv} = settings.hiDetect ? await cvReady(CV_WAIT) : {cv:null};
   if(cv){ try{ c = detectCv(cv, src); }catch(e){ console.warn(e); } }
-  else if(cvState === 'loading') toast('高精度検出を準備中のため、簡易検出を使いました');
+  else if(settings.hiDetect && cvState === 'loading') toast('高精度検出を準備中のため、簡易検出を使いました');
   if(!c) c = detectCorners(src);
   return c && refineCorners(src, orderCorners(c));
 }
@@ -600,6 +706,7 @@ function trueAspect(q, sw, sh){
 // A判・B判(√2)、レター、はがき、名刺に近い比率ならその比率にそろえる
 const STD_RATIOS = [Math.SQRT2, 279.4 / 215.9, 148 / 100, 91 / 55];
 function snapAspect(r){
+  if(!settings.snap) return r;
   const long = Math.max(r, 1 / r);
   const std = STD_RATIOS.find(s => Math.abs(long / s - 1) < 0.03);
   return std ? (r >= 1 ? std : 1 / std) : r;
@@ -620,7 +727,7 @@ function warp(src, corners){
   const sw = src.width, sh = src.height;
   const q = corners.map(([x, y]) => [x * sw, y * sh]);
   let [W, H] = outputSize(q, sw, sh);
-  const k = Math.min(1, MAX_OUT / Math.max(W, H));
+  const k = Math.min(1, quality().maxOut / Math.max(W, H));
   W = Math.max(1, Math.round(W * k)); H = Math.max(1, Math.round(H * k));
   const m = homography([[0, 0], [W, 0], [W, H], [0, H]], q);
   const sd = ctx2d(src).getImageData(0, 0, sw, sh).data;
@@ -839,11 +946,11 @@ $('#btnClear').onclick = async () => {
 
 function resetName(){
   const d = new Date(), z = n => String(n).padStart(2, '0');
-  $('#docName').value = `scan_${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}`;
+  $('#docName').value = `${settings.prefix || 'scan'}_${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}`;
   try{ localStorage.removeItem('doc-scanner-name'); }catch(e){}
 }
 function fileBase(){
-  return ($('#docName').value.trim() || 'scan').replace(/[\\/:*?"<>|]/g, '_');
+  return ($('#docName').value.trim() || settings.prefix || 'scan').replace(/[\\/:*?"<>|]/g, '_');
 }
 
 /* ================= 取り込み ================= */
@@ -870,7 +977,7 @@ async function importFiles(files){
     busy(true, `取り込み中… ${++done}/${files.length}`); await nextFrame();
     try{
       const src = await blobToCanvas(f, MAX_SRC);
-      await savePage({rec:null, src, corners:(await autoCorners(src)) || FULL, deskew:true, filter:lastFilter, rot:0});
+      await savePage({rec:null, src, corners:(await autoCorners(src)) || FULL, deskew:settings.deskew, filter:defaultFilter(), rot:0});
     }catch(err){ console.warn(err); toast(`${done}枚目を読み込めませんでした`); }
   }
   busy(false);
@@ -880,7 +987,7 @@ async function importFiles(files){
 let persistAsked = false;
 async function savePage({rec, src, srcBlob, corners, deskew, filter, rot, out}){
   if(!out) out = processPage(src, corners, deskew, filter, rot);
-  const outBlob = await toBlob(out, 0.85);
+  const outBlob = await toBlob(out, quality().q);
   if(!srcBlob) srcBlob = rec ? rec.src : await toBlob(src, 0.92);
   const p = rec || {id:Date.now().toString(36) + Math.random().toString(36).slice(2, 6), order:pages.length};
   Object.assign(p, {src:srcBlob, w:src.width, h:src.height, corners, deskew, filter, rot, out:outBlob, ow:out.width, oh:out.height});
@@ -907,8 +1014,8 @@ async function openEditor(rec, src){
   Object.assign(ed, {
     rec, src,
     corners: rec ? rec.corners.map(p => p.slice()) : ((await autoCorners(src)) || INSET),
-    deskew: rec ? rec.deskew !== false : true,
-    filter: rec ? rec.filter : lastFilter,
+    deskew: rec ? rec.deskew !== false : settings.deskew,
+    filter: rec ? rec.filter : defaultFilter(),
     rot: rec ? rec.rot : 0,
     warped:null, warpKey:'', out:null, active:-1,
   });
@@ -1020,7 +1127,7 @@ async function renderResult(){
   document.querySelectorAll('#filterChips .chip').forEach(b => b.classList.toggle('active', b.dataset.f === ed.filter));
   busy(true); await nextFrame();
   try{
-    const key = JSON.stringify([ed.corners, ed.deskew]);
+    const key = JSON.stringify([ed.corners, ed.deskew, settings.quality, settings.snap]);
     if(ed.warpKey !== key){
       const st = straighten(warp(ed.src, ed.corners), ed.deskew);
       ed.warped = st.canvas; ed.skewDeg = st.deg; ed.warpKey = key;
@@ -1132,7 +1239,7 @@ async function shareFiles(files){
 }
 async function makePdf(){
   busy(true, 'PDF作成中…'); await nextFrame();
-  try{ return await buildPdf(pages, $('#paper').value); }
+  try{ return await buildPdf(pages, settings.paper); }
   finally{ busy(false); }
 }
 
@@ -1152,13 +1259,106 @@ $('#btnImages').onclick = async () => {
 
 $('#docName').addEventListener('change', () => { try{ localStorage.setItem('doc-scanner-name', $('#docName').value); }catch(e){} });
 
+/* ================= 設定画面 ================= */
+const PAPER_LABEL = {a4:'A4に合わせる', fit:'画像サイズのまま'};
+function updatePaperInfo(){ $('#paperInfo').textContent = `用紙: ${PAPER_LABEL[settings.paper] || ''}`; }
+function updateNameEx(){ $('#stNameEx').textContent = `例: ${settings.prefix || 'scan'}_20261024_0930.pdf`; }
+const fmtBytes = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+
+async function refreshSettingsInfo(){
+  $('#stPages').textContent = pages.length + ' 枚';
+  $('#stUsage').textContent = '計算中…';
+  try{
+    const est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null;
+    $('#stUsage').textContent = est ? fmtBytes(est.usage || 0) : '不明';
+  }catch(e){ $('#stUsage').textContent = '不明'; }
+  let cached = false;
+  try{ cached = !!(window.caches && await (await caches.open('doc-scanner-v1')).match(CV_URL)); }catch(e){}
+  $('#stCacheInfo').textContent = (cached ? 'OpenCV.js 保存済み(オフラインで高精度検出が使えます)。' : 'OpenCV.js 未保存。')
+    + '削除しても次回の起動時に再ダウンロードされます';
+}
+
+function fillSettings(){
+  document.querySelectorAll('#settings [data-k]').forEach(el => {
+    const v = settings[el.dataset.k];
+    if(el.type === 'checkbox') el.checked = !!v; else el.value = v;
+  });
+  setCvState(settings.hiDetect ? cvState === 'off' ? 'idle' : cvState : 'off');
+  updateNameEx();
+}
+
+function applySetting(k){
+  if(k === 'hiDetect'){
+    if(!settings.hiDetect) setCvState('off');
+    else if(cvP) cvP.then(b => setCvState(b.cv ? 'ready' : 'failed'));
+    else loadCv();
+  }
+  if(k === 'paper') updatePaperInfo();
+  if(k === 'prefix'){ updateNameEx(); if(!pages.length) resetName(); }
+}
+
+$('#settings').addEventListener('change', e => {
+  const el = e.target, k = el.dataset.k;
+  if(!k) return;
+  let v = el.type === 'checkbox' ? el.checked : el.value;
+  if(k === 'prefix'){ v = v.trim().replace(/[\\/:*?"<>|]/g, '_') || 'scan'; el.value = v; }
+  settings[k] = v;
+  saveSettings();
+  applySetting(k);
+});
+
+$('#btnSettings').onclick = () => {
+  fillSettings(); refreshSettingsInfo();
+  $('#settings').classList.add('open');
+  document.body.style.overflow = 'hidden';
+};
+$('#stDone').onclick = () => {
+  // 入力中のファイル名の先頭も確定させる
+  if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  $('#settings').classList.remove('open');
+  document.body.style.overflow = '';
+};
+$('#stReset').onclick = () => {
+  if(!confirm('設定を初期値に戻しますか？(スキャンしたページは消えません)')) return;
+  Object.assign(settings, DEFAULTS); saveSettings();
+  ['hiDetect', 'paper', 'prefix'].forEach(applySetting);
+  fillSettings();
+  toast('設定を初期値に戻しました');
+};
+$('#stClearCache').onclick = async () => {
+  if(!confirm('オフライン用データ(OpenCV.js など)を削除しますか？\nスキャンしたページは消えません。')) return;
+  try{ for(const k of await caches.keys()) if(k.startsWith('doc-scanner-')) await caches.delete(k); }catch(e){}
+  await refreshSettingsInfo();
+  toast('オフライン用データを削除しました');
+};
+$('#stUpdate').onclick = async () => {
+  busy(true, '更新を確認中…');
+  try{
+    const res = await fetch(location.pathname, {cache:'no-store'});
+    const m = (await res.text()).match(/const APP_VERSION = '([^']+)'/);
+    if(!m){ busy(false); toast('更新を確認できませんでした'); return; }
+    if(m[1] === APP_VERSION){ busy(false); toast(`最新版です(${APP_VERSION})`); return; }
+    const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+    if(reg) await reg.update().catch(() => {});
+    busy(true, `${m[1]} に更新します…`);
+    location.reload();
+  }catch(e){
+    busy(false); toast('オフラインのため更新を確認できません');
+  }
+};
+
+$('#verBadge').textContent = 'v' + APP_VERSION;
+$('#stVer').textContent = `${APP_VERSION}(${CHANGELOG[0][1]})`;
+$('#stLog').innerHTML = CHANGELOG.map(([v, d, t]) => `<li><b>${v}</b><time>${d}</time><br>${t}</li>`).join('');
+updatePaperInfo();
+
 /* ================= 起動 ================= */
 (async () => {
   try{ $('#docName').value = localStorage.getItem('doc-scanner-name') || ''; }catch(e){}
   if(!window.indexedDB){ idbOk = false; $('#storeWarn').hidden = false; }
   // OpenCV.js は大きいので起動直後から裏で読み込んでおく。sw.js が端末に保存し、次回からはオフラインでも使える
   if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(e => console.warn(e));
-  loadCv();
+  if(settings.hiDetect) loadCv(); else setCvState('off');
   const saved = await dbAll();
   if(saved && saved.length){
     saved.sort((a, b) => a.order - b.order).forEach(p => pages.push(p));
