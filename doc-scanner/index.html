@@ -6,6 +6,12 @@
 <meta name="theme-color" content="#1c2321">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="スキャナ">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>書類スキャナ</title>
 <style>
   :root{
@@ -29,6 +35,11 @@
   header h1{margin:2px 0 0;font-size:21px;font-weight:800;}
   header p{margin:0;font-size:12px;color:#5a5a52;}
 
+  .install-tip{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--rust);padding:10px 10px 10px 12px;margin-bottom:14px;font-size:12px;color:#5a5a52;}
+  .install-tip .txt{flex:1;min-width:0;}
+  .install-tip b{display:block;font-size:13px;color:var(--ink);}
+  .install-tip .btn{font-size:12px;padding:7px 12px;white-space:nowrap;}
+  .install-tip .x{background:none;border:none;font-size:20px;line-height:1;color:#75705f;cursor:pointer;padding:2px 4px;}
   .warn{background:#fbeee6;border:1px solid #e4b9a6;color:#7a3a22;font-size:12px;padding:8px 10px;margin-bottom:12px;}
   .field{margin-bottom:14px;}
   .field label{display:block;font-size:12px;font-weight:700;color:var(--steel-dark);margin-bottom:3px;}
@@ -139,6 +150,12 @@
     <button class="gear" id="btnSettings" aria-label="設定">⚙ 設定</button>
   </header>
 
+  <div class="install-tip" id="installTip" hidden>
+    <div class="txt"><b>アプリとして使えます</b><span id="installTipText"></span></div>
+    <button class="btn" id="installTipBtn" hidden>インストール</button>
+    <button class="x" id="installTipClose" aria-label="閉じる">×</button>
+  </div>
+
   <div class="warn" id="storeWarn" hidden>この環境では端末への保存ができないため、ページを閉じるとスキャンは消えます。先にPDFを保存してください。</div>
 
   <div class="field">
@@ -220,6 +237,12 @@
   <div class="st-top"><h2>設定</h2><button id="stDone">完了</button></div>
   <div class="st-body"><div class="st-in">
     <section class="st-sec">
+      <h3>アプリ</h3>
+      <div class="st-card">
+        <div class="st-row"><span class="lbl">ホーム画面にインストール<small id="stInstallInfo"></small></span><button class="btn" id="stInstall" hidden>インストール</button></div>
+      </div>
+    </section>
+    <section class="st-sec">
       <h3>撮影・検出</h3>
       <div class="st-card">
         <label class="st-row"><span class="lbl">高精度検出(OpenCV.js)<small id="stCvInfo"></small></span><span class="switch"><input type="checkbox" data-k="hiDetect"><span></span></span></label>
@@ -283,8 +306,9 @@ const INSET = [[.05,.05],[.95,.05],[.95,.95],[.05,.95]];
 const CV_URL = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js';
 const CV_WAIT = 6000;   // 撮影時に OpenCV の準備を待つ上限(ms)。超えたら簡易検出に切り替える
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 const CHANGELOG = [
+  ['1.3.0', '2026-10-24', 'アプリ(PWA)化。ホーム画面へのインストール、専用アイコン、全画面表示、圏外でも起動可能に'],
   ['1.2.0', '2026-10-24', '設定画面とバージョン情報を追加。保存画質・最初の仕上がり・PDFの用紙・ファイル名の先頭などを設定可能に'],
   ['1.1.0', '2026-10-24', 'OpenCV.js による四隅検出、角の微調整、本来の縦横比の推定、傾き自動補正、オフライン対応'],
   ['1.0.0', '2026-10-24', '初版。撮影・四隅調整・台形補正・影除去・複数ページ・PDF/JPEG保存'],
@@ -1243,7 +1267,12 @@ async function makePdf(){
   finally{ busy(false); }
 }
 
-$('#btnPdf').onclick = async () => { download(await makePdf(), fileBase() + '.pdf'); };
+$('#btnPdf').onclick = async () => {
+  const blob = await makePdf();
+  // iPhone のホーム画面アプリではダウンロードが不安定なため、共有シート(「ファイルに保存」がある)を使う
+  if(isIOS && isStandalone() && await shareFiles([new File([blob], fileBase() + '.pdf', {type:'application/pdf'})])) return;
+  download(blob, fileBase() + '.pdf');
+};
 $('#btnShare').onclick = async () => {
   const blob = await makePdf();
   const ok = await shareFiles([new File([blob], fileBase() + '.pdf', {type:'application/pdf'})]);
@@ -1351,6 +1380,44 @@ $('#verBadge').textContent = 'v' + APP_VERSION;
 $('#stVer').textContent = `${APP_VERSION}(${CHANGELOG[0][1]})`;
 $('#stLog').innerHTML = CHANGELOG.map(([v, d, t]) => `<li><b>${v}</b><time>${d}</time><br>${t}</li>`).join('');
 updatePaperInfo();
+
+/* ================= アプリ(PWA)としてのインストール ================= */
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const TIP_KEY = 'doc-scanner-install-tip-closed';
+let installEvt = null;
+
+function updateInstallUI(){
+  const standalone = isStandalone();
+  let info, tip = '';
+  if(standalone) info = 'インストール済みです(アプリとして起動中)';
+  else if(installEvt){ info = '全画面で起動でき、圏外でも使えます'; tip = 'ホーム画面にインストールすると、全画面・圏外でも使えます。'; }
+  else if(isIOS){
+    info = 'Safari の共有ボタン(□↑)→「ホーム画面に追加」でインストールできます。保存したスキャンも消えにくくなります';
+    tip = 'Safari の共有ボタン(□↑)→「ホーム画面に追加」で、アプリとして使えます。保存したスキャンも消えにくくなります。';
+  }
+  else info = 'ブラウザのメニューの「アプリをインストール」または「ホーム画面に追加」からインストールできます';
+  $('#stInstallInfo').textContent = info;
+  $('#stInstall').hidden = !installEvt || standalone;
+  $('#installTipText').textContent = tip;
+  $('#installTipBtn').hidden = !installEvt;
+  let closed = false; try{ closed = localStorage.getItem(TIP_KEY) === '1'; }catch(e){}
+  $('#installTip').hidden = standalone || !tip || closed;
+}
+async function promptInstall(){
+  if(!installEvt) return;
+  installEvt.prompt();
+  const {outcome} = await installEvt.userChoice.catch(() => ({}));
+  if(outcome === 'accepted') installEvt = null;
+  updateInstallUI();
+}
+// Android の Chrome / Edge などはインストールできる状態になるとこのイベントが届く(iPhone では届かない)
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; updateInstallUI(); });
+window.addEventListener('appinstalled', () => { installEvt = null; updateInstallUI(); toast('ホーム画面にインストールしました'); });
+$('#installTipBtn').onclick = promptInstall;
+$('#stInstall').onclick = promptInstall;
+$('#installTipClose').onclick = () => { try{ localStorage.setItem(TIP_KEY, '1'); }catch(e){} $('#installTip').hidden = true; };
+updateInstallUI();
 
 /* ================= 起動 ================= */
 (async () => {

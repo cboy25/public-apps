@@ -2,7 +2,14 @@
 const CACHE = 'doc-scanner-v1';
 const CV_URL = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js';
 
-self.addEventListener('install', () => self.skipWaiting());
+// ホーム画面から圏外で起動しても開けるよう、アプリ本体をインストール時に保存しておく
+const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png', './icons/icon.svg'];
+
+self.addEventListener('install', e => e.waitUntil((async () => {
+  const c = await caches.open(CACHE);
+  await Promise.all(SHELL.map(u => c.add(new Request(u, {cache:'reload'})).catch(err => console.warn(u, err))));
+  await self.skipWaiting();
+})()));
 
 self.addEventListener('activate', e => e.waitUntil((async () => {
   for(const k of await caches.keys()) if(k.startsWith('doc-scanner-') && k !== CACHE) await caches.delete(k);
