@@ -14,3 +14,12 @@
 GitHub Pages公開時のURL例：
 - `https://<username>.github.io/public-apps/work-log-organizer/index.html`
 - `https://<username>.github.io/public-apps/work-log-organizer/record.html`
+
+### doc-scanner
+
+書類スキャナ。スマホで書類を撮影し、四隅の自動検出・台形補正・影除去(カラー補正/グレー/白黒)をしてPDFやJPEGで保存・共有します。すべての処理は端末内で完結し、外部にデータは送信されません。
+
+- `index.html` — スキャナ本体(カメラ撮影対応・複数ページ対応)
+
+GitHub Pages公開時のURL例：
+- `https://<username>.github.io/public-apps/doc-scanner/`

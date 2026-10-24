@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1c2321">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>書類スキャナ</title>
+<style>
+  :root{
+    --ink:#1c2321; --paper:#f2efe9; --paper-dim:#e6e2d8;
+    --steel:#3d5a6c; --steel-dark:#2b4150; --rust:#b5502f;
+    --line:#c9c2b2; --ok:#4a7856; --accent:#3fb6d9;
+    --mono:"SF Mono","Consolas","Menlo",monospace;
+    --sans:-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",sans-serif;
+    --safe-b:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.6;}
+  button{font-family:var(--sans);}
+  .wrap{max-width:760px;margin:0 auto;padding:16px 16px calc(150px + var(--safe-b));}
+  header{border-bottom:3px solid var(--ink);padding-bottom:10px;margin-bottom:16px;}
+  header .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--rust);text-transform:uppercase;}
+  header h1{margin:2px 0 0;font-size:21px;font-weight:800;}
+  header p{margin:0;font-size:12px;color:#5a5a52;}
+
+  .warn{background:#fbeee6;border:1px solid #e4b9a6;color:#7a3a22;font-size:12px;padding:8px 10px;margin-bottom:12px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12px;font-weight:700;color:var(--steel-dark);margin-bottom:3px;}
+  .field-row{display:flex;gap:8px;}
+  input[type=text],select{font-family:var(--sans);font-size:16px;padding:8px 10px;border:1px solid var(--line);border-radius:2px;background:#fff;width:100%;color:var(--ink);}
+  select{width:auto;}
+
+  .sec-head{display:flex;align-items:baseline;justify-content:space-between;margin:4px 0 8px;}
+  .sec-head h2{margin:0;font-size:14px;}
+  .sec-head .count{font-family:var(--mono);font-size:12px;color:#75705f;}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;}
+  .pg{background:#fff;border:1px solid var(--line);border-radius:2px;overflow:hidden;display:flex;flex-direction:column;}
+  .pg .img{position:relative;aspect-ratio:3/4;background:var(--paper-dim);display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .pg .img img{max-width:100%;max-height:100%;display:block;box-shadow:0 1px 4px rgba(0,0,0,.25);}
+  .pg .no{position:absolute;left:6px;top:6px;font-family:var(--mono);font-size:11px;font-weight:700;background:var(--ink);color:#fff;padding:0 6px;border-radius:2px;}
+  .pg .acts{display:flex;border-top:1px solid var(--line);}
+  .pg .acts button{flex:1;font-size:13px;padding:8px 0;border:none;border-right:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;}
+  .pg .acts button:last-child{border-right:none;color:var(--rust);}
+  .pg .acts button:disabled{color:#c9c2b2;}
+  .empty{border:2px dashed var(--line);background:#fdfcfa;padding:36px 16px;text-align:center;font-size:13px;color:#75705f;}
+  .empty b{display:block;font-size:15px;color:var(--steel-dark);margin-bottom:4px;}
+
+  .export{margin-top:22px;background:#fff;border:1px solid var(--line);padding:12px;}
+  .export h2{margin:0 0 8px;font-size:14px;}
+  .export .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+  .export .hint{font-size:11px;color:#75705f;margin:8px 0 0;}
+
+  .btn{font-weight:700;font-size:14px;border:none;border-radius:2px;padding:10px 14px;cursor:pointer;background:var(--steel);color:#fff;}
+  .btn.secondary{background:#fff;color:var(--steel);border:1px solid var(--steel);}
+  .btn.rust{background:var(--rust);}
+  .btn.ghost{background:transparent;color:var(--rust);border:1px solid var(--rust);}
+  .btn:disabled{background:#b9b6ab;color:#fff;border-color:#b9b6ab;cursor:not-allowed;}
+
+  .dock{position:fixed;left:0;right:0;bottom:0;background:var(--ink);padding:10px 16px calc(10px + var(--safe-b));z-index:10;}
+  .dock .in{max-width:760px;margin:0 auto;display:flex;gap:10px;}
+  .dock .btn{flex:1;padding:14px 10px;font-size:15px;}
+  .dock .cam{background:var(--rust);flex:1.6;}
+  .dock .pick{background:#fff;color:var(--ink);}
+
+  /* ---- editor (full screen) ---- */
+  .editor{position:fixed;inset:0;background:#111;color:#fff;z-index:20;display:none;flex-direction:column;height:100vh;height:100dvh;}
+  .editor.open{display:flex;}
+  .ed-top{display:flex;align-items:center;gap:8px;padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top,0px));background:#1c1c1c;}
+  .ed-top .ttl{flex:1;font-size:14px;font-weight:700;text-align:center;}
+  .ed-top button{background:none;border:none;color:#ddd;font-size:14px;padding:4px 6px;cursor:pointer;min-width:64px;text-align:left;}
+  .ed-top button:last-child{text-align:right;}
+  .stage{flex:1;position:relative;overflow:hidden;}
+  #cropCanvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;}
+  .result{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;}
+  #resultCanvas{max-width:100%;max-height:100%;box-shadow:0 2px 12px rgba(0,0,0,.6);background:#fff;}
+  .ed-bar{background:#1c1c1c;padding:10px 12px calc(12px + var(--safe-b));}
+  .ed-bar .row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;}
+  .ed-bar .row + .row{margin-top:10px;}
+  .ed-bar .btn{flex:1;max-width:220px;}
+  .ed-bar .tool{background:#2c2c2c;color:#eee;border:1px solid #444;border-radius:2px;font-size:13px;padding:8px 10px;cursor:pointer;}
+  .ed-bar .chip{background:#2c2c2c;color:#ccc;border:1px solid #444;border-radius:16px;font-size:13px;padding:6px 12px;cursor:pointer;}
+  .ed-bar .chip.active{background:var(--accent);border-color:var(--accent);color:#06222c;font-weight:700;}
+  .ed-hint{font-size:11px;color:#9a9a9a;text-align:center;margin:0 0 8px;}
+  [hidden]{display:none !important;}
+
+  .busy{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:40;display:none;align-items:center;justify-content:center;}
+  .busy.on{display:flex;}
+  .busy div{background:#fff;color:var(--ink);padding:14px 20px;font-size:14px;font-weight:700;border-radius:2px;}
+  .toast{position:fixed;left:50%;bottom:calc(96px + var(--safe-b));transform:translateX(-50%);background:var(--ink);color:#fff;font-size:13px;padding:8px 14px;border-radius:2px;z-index:50;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;}
+  .toast.on{opacity:1;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Document Scanner</div>
+    <h1>書類スキャナ</h1>
+    <p>撮影 → 四隅を合わせる → 補正 → PDF/画像で保存。データは端末内だけで処理されます。</p>
+  </header>
+
+  <div class="warn" id="storeWarn" hidden>この環境では端末への保存ができないため、ページを閉じるとスキャンは消えます。先にPDFを保存してください。</div>
+
+  <div class="field">
+    <label for="docName">ファイル名</label>
+    <input type="text" id="docName" autocomplete="off">
+  </div>
+
+  <div class="sec-head">
+    <h2>ページ</h2>
+    <span class="count" id="pageCount">0 枚</span>
+  </div>
+  <div id="pages"></div>
+
+  <section class="export">
+    <h2>保存・共有</h2>
+    <div class="row">
+      <button class="btn" id="btnPdf">PDFを保存</button>
+      <button class="btn secondary" id="btnShare">PDFを共有</button>
+      <button class="btn secondary" id="btnImages">画像(JPEG)で保存</button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label style="font-size:12px;font-weight:700;color:var(--steel-dark)">用紙
+        <select id="paper">
+          <option value="a4">A4に合わせる</option>
+          <option value="fit">画像サイズのまま</option>
+        </select>
+      </label>
+      <span style="flex:1"></span>
+      <button class="btn ghost" id="btnClear">全ページ削除</button>
+    </div>
+    <p class="hint">「共有」からはメール・LINE・ファイルアプリ等へ直接送れます(対応ブラウザのみ)。</p>
+  </section>
+</div>
+
+<div class="dock">
+  <div class="in">
+    <button class="btn cam" id="btnCam">📷 撮影する</button>
+    <button class="btn pick" id="btnPick">🖼 写真から</button>
+  </div>
+</div>
+<input type="file" id="camIn" accept="image/*" capture="environment" hidden>
+<input type="file" id="picIn" accept="image/*" multiple hidden>
+
+<!-- editor -->
+<div class="editor" id="editor">
+  <div class="ed-top">
+    <button id="edCancel">キャンセル</button>
+    <div class="ttl" id="edTitle">範囲を調整</div>
+    <button id="edNext">次へ ›</button>
+  </div>
+  <div class="stage" id="stage">
+    <canvas id="cropCanvas"></canvas>
+    <div class="result" id="resultBox" hidden><canvas id="resultCanvas"></canvas></div>
+  </div>
+  <div class="ed-bar">
+    <div id="cropBar">
+      <p class="ed-hint">○ をドラッグして書類の四隅に合わせてください</p>
+      <div class="row">
+        <button class="tool" id="edAuto">自動検出</button>
+        <button class="tool" id="edFull">画像全体</button>
+      </div>
+    </div>
+    <div id="filterBar" hidden>
+      <div class="row" id="filterChips">
+        <button class="chip" data-f="enhance">カラー補正</button>
+        <button class="chip" data-f="gray">グレー</button>
+        <button class="chip" data-f="bw">白黒</button>
+        <button class="chip" data-f="original">元の色</button>
+      </div>
+      <div class="row">
+        <button class="tool" id="edRotL">↺ 左に回転</button>
+        <button class="tool" id="edRotR">↻ 右に回転</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="edSave">保存</button>
+        <button class="btn rust" id="edSaveNext">保存して次を撮影</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="busy" id="busy"><div id="busyMsg">処理中…</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+const MAX_SRC = 2400;   // 取り込み画像の長辺上限(px)
+const MAX_OUT = 2200;   // 補正後画像の長辺上限(px)
+const DETECT = 360;     // 輪郭検出用の縮小サイズ(px)
+const FULL = [[0,0],[1,0],[1,1],[0,1]];
+const INSET = [[.05,.05],[.95,.05],[.95,.95],[.05,.95]];
+
+const $ = s => document.querySelector(s);
+const pages = [];            // {id, order, src, w, h, corners, filter, rot, out, ow, oh}
+const thumbUrls = new Map(); // id -> objectURL
+let lastFilter = 'enhance';
+
+function mkCanvas(w, h){ const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function ctx2d(c){ return c.getContext('2d', {willReadFrequently:true}); }
+const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+const toBlob = (c, q) => new Promise(r => c.toBlob(r, 'image/jpeg', q));
+const clamp255 = v => v < 0 ? 0 : v > 255 ? 255 : v;
+
+function busy(on, msg){ $('#busyMsg').textContent = msg || '処理中…'; $('#busy').classList.toggle('on', on); }
+let toastTimer;
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('on'), 2400); }
+
+/* ================= 保存(IndexedDB) ================= */
+let idbP = null, idbOk = true;
+function idb(){
+  if(!idbP) idbP = new Promise((res, rej) => {
+    const r = indexedDB.open('doc-scanner', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('pages', {keyPath:'id'});
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+  return idbP;
+}
+async function store(mode, fn){
+  if(!idbOk) return null;
+  try{
+    const d = await idb();
+    return await new Promise((res, rej) => {
+      const t = d.transaction('pages', mode);
+      const req = fn(t.objectStore('pages'));
+      t.oncomplete = () => res(req && req.result);
+      t.onerror = () => rej(t.error);
+    });
+  }catch(e){
+    idbOk = false; $('#storeWarn').hidden = false; console.warn(e);
+    return null;
+  }
+}
+const dbAll = () => store('readonly', s => s.getAll());
+const dbPut = rec => store('readwrite', s => s.put(rec));
+const dbDel = id => store('readwrite', s => s.delete(id));
+
+/* ================= 画像処理 ================= */
+async function blobToCanvas(blob, maxSide){
+  const url = URL.createObjectURL(blob);
+  try{
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = () => rej(new Error('画像を読み込めませんでした'));
+      i.src = url;
+    });
+    const s = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = mkCanvas(Math.round(img.naturalWidth * s), Math.round(img.naturalHeight * s));
+    ctx2d(c).drawImage(img, 0, 0, c.width, c.height);
+    return c;
+  }finally{ URL.revokeObjectURL(url); }
+}
+
+function boxBlur(src, w, h, r){
+  const tmp = new Float32Array(w * h), out = new Float32Array(w * h), n = 2 * r + 1;
+  for(let y = 0; y < h; y++){
+    const row = y * w; let acc = 0;
+    for(let k = -r; k <= r; k++) acc += src[row + Math.min(w - 1, Math.max(0, k))];
+    for(let x = 0; x < w; x++){
+      tmp[row + x] = acc / n;
+      acc += src[row + Math.min(w - 1, x + r + 1)] - src[row + Math.max(0, x - r)];
+    }
+  }
+  for(let x = 0; x < w; x++){
+    let acc = 0;
+    for(let k = -r; k <= r; k++) acc += tmp[Math.min(h - 1, Math.max(0, k)) * w + x];
+    for(let y = 0; y < h; y++){
+      out[y * w + x] = acc / n;
+      acc += tmp[Math.min(h - 1, y + r + 1) * w + x] - tmp[Math.max(0, y - r) * w + x];
+    }
+  }
+  return out;
+}
+
+function luminance(data, n){
+  const L = new Float32Array(n);
+  for(let i = 0, j = 0; i < n; i++, j += 4) L[i] = 0.299 * data[j] + 0.587 * data[j + 1] + 0.114 * data[j + 2];
+  return L;
+}
+
+function otsu(g){
+  const hist = new Float64Array(256);
+  for(let i = 0; i < g.length; i++) hist[g[i] | 0]++;
+  let sum = 0; for(let i = 0; i < 256; i++) sum += i * hist[i];
+  let sumB = 0, wB = 0, best = -1, t = 127;
+  for(let i = 0; i < 256; i++){
+    wB += hist[i]; if(!wB) continue;
+    const wF = g.length - wB; if(!wF) break;
+    sumB += i * hist[i];
+    const d = sumB / wB - (sum - sumB) / wF, between = wB * wF * d * d;
+    if(between > best){ best = between; t = i; }
+  }
+  return t;
+}
+
+// 画面の端3辺以上に接する領域(机・背景)を除いた最大の連結領域を四角形として返す
+function largestBlob(mask, w, h){
+  const seen = new Uint8Array(w * h), stack = new Int32Array(w * h);
+  let best = null;
+  for(let i = 0; i < w * h; i++){
+    if(!mask[i] || seen[i]) continue;
+    let sp = 0, area = 0, minX = w, maxX = 0, minY = h, maxY = 0;
+    let sMin = Infinity, sMax = -Infinity, dMin = Infinity, dMax = -Infinity, tl, tr, br, bl;
+    stack[sp++] = i; seen[i] = 1;
+    while(sp){
+      const p = stack[--sp], x = p % w, y = (p / w) | 0;
+      area++;
+      if(x < minX) minX = x; if(x > maxX) maxX = x; if(y < minY) minY = y; if(y > maxY) maxY = y;
+      const s = x + y, d = x - y;
+      if(s < sMin){ sMin = s; tl = [x, y]; }
+      if(s > sMax){ sMax = s; br = [x, y]; }
+      if(d > dMax){ dMax = d; tr = [x, y]; }
+      if(d < dMin){ dMin = d; bl = [x, y]; }
+      if(x > 0     && mask[p - 1] && !seen[p - 1]){ seen[p - 1] = 1; stack[sp++] = p - 1; }
+      if(x < w - 1 && mask[p + 1] && !seen[p + 1]){ seen[p + 1] = 1; stack[sp++] = p + 1; }
+      if(y > 0     && mask[p - w] && !seen[p - w]){ seen[p - w] = 1; stack[sp++] = p - w; }
+      if(y < h - 1 && mask[p + w] && !seen[p + w]){ seen[p + w] = 1; stack[sp++] = p + w; }
+    }
+    const edges = (minX <= 1) + (maxX >= w - 2) + (minY <= 1) + (maxY >= h - 2);
+    if(edges >= 3) continue;
+    if(!best || area > best.area) best = {area, quad:[tl, tr, br, bl]};
+  }
+  return best;
+}
+
+function quadArea(q){
+  let a = 0;
+  for(let i = 0; i < 4; i++){ const [x1, y1] = q[i], [x2, y2] = q[(i + 1) % 4]; a += x1 * y2 - x2 * y1; }
+  return Math.abs(a) / 2;
+}
+
+function detectCorners(src){
+  const s = DETECT / Math.max(src.width, src.height);
+  const w = Math.max(8, Math.round(src.width * s)), h = Math.max(8, Math.round(src.height * s));
+  const c = mkCanvas(w, h), cx = ctx2d(c);
+  cx.drawImage(src, 0, 0, w, h);
+  const g = boxBlur(luminance(cx.getImageData(0, 0, w, h).data, w * h), w, h, 2);
+  const t = otsu(g);
+  const bright = new Uint8Array(w * h), dark = new Uint8Array(w * h);
+  for(let i = 0; i < w * h; i++){ if(g[i] > t) bright[i] = 1; else dark[i] = 1; }
+  // 白い紙を優先し、だめなら暗い紙(白い机の上など)を試す
+  for(const mask of [bright, dark]){
+    const b = largestBlob(mask, w, h);
+    if(!b) continue;
+    const qa = quadArea(b.quad);
+    if(qa < 0.12 * w * h || b.area < 0.75 * qa) continue;
+    return b.quad.map(([x, y]) => [(x + 0.5) / w, (y + 0.5) / h]);
+  }
+  return null;
+}
+
+// 4点 from を 4点 to に移す射影変換行列
+function homography(from, to){
+  const A = [], b = [];
+  for(let i = 0; i < 4; i++){
+    const [x, y] = from[i], [X, Y] = to[i];
+    A.push([x, y, 1, 0, 0, 0, -X * x, -X * y]); b.push(X);
+    A.push([0, 0, 0, x, y, 1, -Y * x, -Y * y]); b.push(Y);
+  }
+  for(let col = 0; col < 8; col++){
+    let piv = col;
+    for(let r = col + 1; r < 8; r++) if(Math.abs(A[r][col]) > Math.abs(A[piv][col])) piv = r;
+    [A[col], A[piv]] = [A[piv], A[col]]; [b[col], b[piv]] = [b[piv], b[col]];
+    for(let r = 0; r < 8; r++){
+      if(r === col) continue;
+      const f = A[r][col] / A[col][col];
+      for(let k = col; k < 8; k++) A[r][k] -= f * A[col][k];
+      b[r] -= f * b[col];
+    }
+  }
+  return b.map((v, i) => v / A[i][i]);
+}
+
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+
+function warp(src, corners){
+  const sw = src.width, sh = src.height;
+  const q = corners.map(([x, y]) => [x * sw, y * sh]);
+  const [tl, tr, br, bl] = q;
+  let W = (dist(tl, tr) + dist(bl, br)) / 2, H = (dist(tl, bl) + dist(tr, br)) / 2;
+  const k = Math.min(1, MAX_OUT / Math.max(W, H));
+  W = Math.max(1, Math.round(W * k)); H = Math.max(1, Math.round(H * k));
+  const m = homography([[0, 0], [W, 0], [W, H], [0, H]], q);
+  const sd = ctx2d(src).getImageData(0, 0, sw, sh).data;
+  const out = mkCanvas(W, H), ocx = ctx2d(out), od = ocx.createImageData(W, H), o = od.data;
+  for(let y = 0; y < H; y++){
+    const v = y + 0.5;
+    for(let x = 0; x < W; x++){
+      const u = x + 0.5, den = m[6] * u + m[7] * v + 1;
+      let fx = (m[0] * u + m[1] * v + m[2]) / den - 0.5;
+      let fy = (m[3] * u + m[4] * v + m[5]) / den - 0.5;
+      if(fx < 0) fx = 0; else if(fx > sw - 1) fx = sw - 1;
+      if(fy < 0) fy = 0; else if(fy > sh - 1) fy = sh - 1;
+      const x0 = fx | 0, y0 = fy | 0, x1 = Math.min(x0 + 1, sw - 1), y1 = Math.min(y0 + 1, sh - 1);
+      const ax = fx - x0, ay = fy - y0;
+      const i00 = (y0 * sw + x0) * 4, i10 = (y0 * sw + x1) * 4, i01 = (y1 * sw + x0) * 4, i11 = (y1 * sw + x1) * 4;
+      const oi = (y * W + x) * 4;
+      for(let c = 0; c < 3; c++){
+        const top = sd[i00 + c] + (sd[i10 + c] - sd[i00 + c]) * ax;
+        const bot = sd[i01 + c] + (sd[i11 + c] - sd[i01 + c]) * ax;
+        o[oi + c] = top + (bot - top) * ay;
+      }
+      o[oi + 3] = 255;
+    }
+  }
+  ocx.putImageData(od, 0, 0);
+  return out;
+}
+
+// 紙の明るさ(影・照明ムラ)を画素ごとに推定する。文字の影響を消すため小ブロックの最大値をぼかして使う
+function paperLevel(L, w, h){
+  const cell = Math.max(8, Math.round(Math.max(w, h) / 48));
+  const gw = Math.ceil(w / cell), gh = Math.ceil(h / cell);
+  let G = new Float32Array(gw * gh);
+  for(let gy = 0; gy < gh; gy++) for(let gx = 0; gx < gw; gx++){
+    let mx = 0;
+    const y1 = Math.min(h, (gy + 1) * cell), x1 = Math.min(w, (gx + 1) * cell);
+    for(let y = gy * cell; y < y1; y += 2) for(let x = gx * cell; x < x1; x += 2){ const v = L[y * w + x]; if(v > mx) mx = v; }
+    G[gy * gw + gx] = mx;
+  }
+  G = boxBlur(boxBlur(G, gw, gh, 1), gw, gh, 1);
+  // 黒ベタ等の大きな暗い部分まで「紙」とみなして白飛びさせないよう下限を設ける
+  const sorted = Float32Array.from(G).sort();
+  const floor = Math.max(40, sorted[sorted.length >> 1] * 0.55);
+  for(let i = 0; i < G.length; i++) if(G[i] < floor) G[i] = floor;
+
+  const bg = new Float32Array(w * h);
+  const xi0 = new Int32Array(w), xi1 = new Int32Array(w), xf = new Float32Array(w);
+  for(let x = 0; x < w; x++){
+    const gx = Math.min(gw - 1, Math.max(0, (x + 0.5) / cell - 0.5));
+    xi0[x] = gx | 0; xi1[x] = Math.min(gw - 1, xi0[x] + 1); xf[x] = gx - xi0[x];
+  }
+  for(let y = 0; y < h; y++){
+    const gy = Math.min(gh - 1, Math.max(0, (y + 0.5) / cell - 0.5));
+    const r0 = (gy | 0) * gw, r1 = Math.min(gh - 1, (gy | 0) + 1) * gw, fy = gy - (gy | 0);
+    for(let x = 0; x < w; x++){
+      const a = G[r0 + xi0[x]] + (G[r0 + xi1[x]] - G[r0 + xi0[x]]) * xf[x];
+      const b = G[r1 + xi0[x]] + (G[r1 + xi1[x]] - G[r1 + xi0[x]]) * xf[x];
+      bg[y * w + x] = a + (b - a) * fy;
+    }
+  }
+  return bg;
+}
+
+function applyFilter(src, mode){
+  const w = src.width, h = src.height, out = mkCanvas(w, h), ocx = ctx2d(out);
+  ocx.drawImage(src, 0, 0);
+  if(mode === 'original') return out;
+  const id = ocx.getImageData(0, 0, w, h), d = id.data, n = w * h;
+  const L = luminance(d, n), bg = paperLevel(L, w, h);
+  for(let i = 0, j = 0; i < n; i++, j += 4){
+    const k = 255 / bg[i];
+    if(mode === 'enhance'){
+      let r = (d[j] * k - 25) * 1.11, g = (d[j + 1] * k - 25) * 1.11, b = (d[j + 2] * k - 25) * 1.11;
+      const m = (r + g + b) / 3;
+      d[j] = clamp255(m + (r - m) * 1.25); d[j + 1] = clamp255(m + (g - m) * 1.25); d[j + 2] = clamp255(m + (b - m) * 1.25);
+    }else if(mode === 'gray'){
+      const v = clamp255((L[i] * k - 40) * 1.25);
+      d[j] = d[j + 1] = d[j + 2] = v;
+    }else{ // bw
+      const t = (L[i] / bg[i] - 0.70) / 0.16;
+      const v = t <= 0 ? 0 : t >= 1 ? 255 : t * 255;
+      d[j] = d[j + 1] = d[j + 2] = v;
+    }
+  }
+  ocx.putImageData(id, 0, 0);
+  return out;
+}
+
+function rotate(src, rot){
+  if(!rot) return src;
+  const side = rot % 180 !== 0;
+  const out = mkCanvas(side ? src.height : src.width, side ? src.width : src.height), cx = ctx2d(out);
+  cx.translate(out.width / 2, out.height / 2);
+  cx.rotate(rot * Math.PI / 180);
+  cx.drawImage(src, -src.width / 2, -src.height / 2);
+  return out;
+}
+
+// ドラッグで順番が入れ替わっても 左上→右上→右下→左下 に並べ直す
+function orderCorners(c){
+  const cx = c.reduce((s, p) => s + p[0], 0) / 4, cy = c.reduce((s, p) => s + p[1], 0) / 4;
+  const sorted = c.slice().sort((a, b) => Math.atan2(a[1] - cy, a[0] - cx) - Math.atan2(b[1] - cy, b[0] - cx));
+  let start = 0;
+  sorted.forEach((p, i) => { if(p[0] + p[1] < sorted[start][0] + sorted[start][1]) start = i; });
+  return sorted.slice(start).concat(sorted.slice(0, start));
+}
+
+/* ================= ページ一覧 ================= */
+function thumbUrl(p){
+  if(!thumbUrls.has(p.id)) thumbUrls.set(p.id, URL.createObjectURL(p.out));
+  return thumbUrls.get(p.id);
+}
+function dropThumb(id){
+  if(thumbUrls.has(id)){ URL.revokeObjectURL(thumbUrls.get(id)); thumbUrls.delete(id); }
+}
+
+function renderPages(){
+  const box = $('#pages');
+  $('#pageCount').textContent = pages.length + ' 枚';
+  ['#btnPdf', '#btnShare', '#btnImages', '#btnClear'].forEach(s => $(s).disabled = !pages.length);
+  if(!pages.length){
+    box.innerHTML = '<div class="empty"><b>まだページがありません</b>下の「撮影する」から書類を撮ってください。<br>複数ページを1つのPDFにまとめられます。</div>';
+    return;
+  }
+  box.innerHTML = '';
+  const grid = document.createElement('div'); grid.className = 'grid';
+  pages.forEach((p, i) => {
+    const el = document.createElement('div'); el.className = 'pg';
+    el.innerHTML = `<div class="img"><img alt=""><span class="no">${i + 1}</span></div>
+      <div class="acts"><button data-a="up" aria-label="前へ">◀</button><button data-a="down" aria-label="後ろへ">▶</button><button data-a="del">削除</button></div>`;
+    el.querySelector('img').src = thumbUrl(p);
+    el.querySelector('.img').onclick = () => openEditor(p);
+    const [up, down, del] = el.querySelectorAll('button');
+    up.disabled = i === 0; down.disabled = i === pages.length - 1;
+    up.onclick = () => movePage(i, -1);
+    down.onclick = () => movePage(i, 1);
+    del.onclick = () => deletePage(i);
+    grid.appendChild(el);
+  });
+  box.appendChild(grid);
+}
+
+async function movePage(i, dir){
+  const j = i + dir;
+  [pages[i], pages[j]] = [pages[j], pages[i]];
+  pages.forEach((p, k) => p.order = k);
+  renderPages();
+  await dbPut(pages[i]); await dbPut(pages[j]);
+}
+async function deletePage(i){
+  if(!confirm(`${i + 1}ページ目を削除しますか？`)) return;
+  const [p] = pages.splice(i, 1);
+  dropThumb(p.id); renderPages();
+  await dbDel(p.id);
+}
+$('#btnClear').onclick = async () => {
+  if(!confirm('すべてのページを削除しますか？')) return;
+  const all = pages.splice(0);
+  all.forEach(p => dropThumb(p.id));
+  renderPages(); resetName();
+  for(const p of all) await dbDel(p.id);
+};
+
+function resetName(){
+  const d = new Date(), z = n => String(n).padStart(2, '0');
+  $('#docName').value = `scan_${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}`;
+  try{ localStorage.removeItem('doc-scanner-name'); }catch(e){}
+}
+function fileBase(){
+  return ($('#docName').value.trim() || 'scan').replace(/[\\/:*?"<>|]/g, '_');
+}
+
+/* ================= 取り込み ================= */
+$('#btnCam').onclick = () => $('#camIn').click();
+$('#btnPick').onclick = () => $('#picIn').click();
+$('#camIn').onchange = e => { const f = [...e.target.files]; e.target.value = ''; importFiles(f); };
+$('#picIn').onchange = e => { const f = [...e.target.files]; e.target.value = ''; importFiles(f); };
+
+async function importFiles(files){
+  if(!files.length) return;
+  if(files.length === 1){
+    busy(true, '読み込み中…'); await nextFrame();
+    try{
+      const src = await blobToCanvas(files[0], MAX_SRC);
+      openEditor(null, src);
+    }catch(err){ alert(err.message); }
+    finally{ busy(false); }
+    return;
+  }
+  // 複数枚は自動検出でまとめて追加(あとでタップして個別に調整可能)
+  let done = 0;
+  for(const f of files){
+    busy(true, `取り込み中… ${++done}/${files.length}`); await nextFrame();
+    try{
+      const src = await blobToCanvas(f, MAX_SRC);
+      await savePage({rec:null, src, corners:detectCorners(src) || FULL, filter:lastFilter, rot:0});
+    }catch(err){ console.warn(err); toast(`${done}枚目を読み込めませんでした`); }
+  }
+  busy(false);
+  toast(`${files.length}枚を追加しました。タップで範囲を調整できます`);
+}
+
+async function savePage({rec, src, srcBlob, corners, filter, rot, out}){
+  if(!out) out = rotate(applyFilter(warp(src, corners), filter), rot);
+  const outBlob = await toBlob(out, 0.85);
+  if(!srcBlob) srcBlob = rec ? rec.src : await toBlob(src, 0.92);
+  const p = rec || {id:Date.now().toString(36) + Math.random().toString(36).slice(2, 6), order:pages.length};
+  Object.assign(p, {src:srcBlob, w:src.width, h:src.height, corners, filter, rot, out:outBlob, ow:out.width, oh:out.height});
+  dropThumb(p.id);
+  if(!rec) pages.push(p);
+  renderPages();
+  await dbPut(p);
+  return p;
+}
+
+/* ================= エディタ ================= */
+const ed = {rec:null, src:null, corners:null, filter:'enhance', rot:0, step:'crop', warped:null, warpKey:'', out:null, active:-1, grab:[0, 0], view:null};
+const cropCv = $('#cropCanvas');
+
+async function openEditor(rec, src){
+  if(rec){
+    busy(true, '読み込み中…'); await nextFrame();
+    try{ src = await blobToCanvas(rec.src, MAX_SRC); }
+    catch(err){ busy(false); alert(err.message); return; }
+    busy(false);
+  }
+  Object.assign(ed, {
+    rec, src,
+    corners: rec ? rec.corners.map(p => p.slice()) : (detectCorners(src) || INSET),
+    filter: rec ? rec.filter : lastFilter,
+    rot: rec ? rec.rot : 0,
+    warped:null, warpKey:'', out:null, active:-1,
+  });
+  $('#editor').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  showStep('crop');
+}
+function closeEditor(){
+  $('#editor').classList.remove('open');
+  document.body.style.overflow = '';
+  ed.src = ed.warped = ed.out = null;
+}
+
+function showStep(step){
+  ed.step = step;
+  const crop = step === 'crop';
+  $('#edTitle').textContent = crop ? '範囲を調整' : '仕上がりを確認';
+  $('#edNext').textContent = crop ? '次へ ›' : '';
+  $('#edNext').style.visibility = crop ? 'visible' : 'hidden';
+  $('#edCancel').textContent = crop ? 'キャンセル' : '‹ 範囲';
+  cropCv.hidden = !crop; $('#cropBar').hidden = !crop;
+  $('#resultBox').hidden = crop; $('#filterBar').hidden = crop;
+  if(crop) layoutCrop(); else renderResult();
+}
+
+$('#edCancel').onclick = () => ed.step === 'crop' ? closeEditor() : showStep('crop');
+$('#edNext').onclick = () => { ed.corners = orderCorners(ed.corners); showStep('filter'); };
+$('#edAuto').onclick = () => {
+  const c = detectCorners(ed.src);
+  if(c){ ed.corners = c; drawCrop(); }
+  else toast('書類の輪郭を見つけられませんでした。手動で合わせてください');
+};
+$('#edFull').onclick = () => { ed.corners = FULL.map(p => p.slice()); drawCrop(); };
+
+function layoutCrop(){
+  const r = $('#stage').getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  if(!r.width || !r.height || !ed.src) return;
+  cropCv.width = Math.round(r.width * dpr); cropCv.height = Math.round(r.height * dpr);
+  const pad = 22, s = Math.min((r.width - pad * 2) / ed.src.width, (r.height - pad * 2) / ed.src.height);
+  ed.view = {s, dpr, w:r.width, h:r.height, ox:(r.width - ed.src.width * s) / 2, oy:(r.height - ed.src.height * s) / 2};
+  drawCrop();
+}
+window.addEventListener('resize', () => { if(ed.src && ed.step === 'crop') layoutCrop(); else if(ed.out) fitResult(); });
+
+function toScreen([nx, ny]){ const v = ed.view; return [v.ox + nx * ed.src.width * v.s, v.oy + ny * ed.src.height * v.s]; }
+
+function drawCrop(){
+  const v = ed.view; if(!v) return;
+  const c = cropCv.getContext('2d'), iw = ed.src.width * v.s, ih = ed.src.height * v.s;
+  c.setTransform(v.dpr, 0, 0, v.dpr, 0, 0);
+  c.clearRect(0, 0, v.w, v.h);
+  c.drawImage(ed.src, v.ox, v.oy, iw, ih);
+  const pts = ed.corners.map(toScreen);
+  c.beginPath(); c.rect(v.ox, v.oy, iw, ih);
+  c.moveTo(...pts[0]); pts.slice(1).forEach(p => c.lineTo(...p)); c.closePath();
+  c.fillStyle = 'rgba(0,0,0,.5)'; c.fill('evenodd');
+  c.beginPath(); c.moveTo(...pts[0]); pts.slice(1).forEach(p => c.lineTo(...p)); c.closePath();
+  c.lineWidth = 2; c.strokeStyle = '#3fb6d9'; c.stroke();
+  pts.forEach((p, i) => {
+    c.beginPath(); c.arc(p[0], p[1], ed.active === i ? 14 : 11, 0, Math.PI * 2);
+    c.fillStyle = 'rgba(255,255,255,.9)'; c.fill();
+    c.lineWidth = 3; c.strokeStyle = '#3fb6d9'; c.stroke();
+  });
+  if(ed.active >= 0) drawLoupe(c, pts[ed.active]);
+}
+
+// ドラッグ中、指で隠れる角を拡大表示する
+function drawLoupe(c, p){
+  const v = ed.view, R = 58, Z = 3;
+  const lx = p[0] < v.w / 2 && p[1] < 170 ? v.w - R - 12 : R + 12, ly = R + 12;
+  c.save();
+  c.beginPath(); c.arc(lx, ly, R, 0, Math.PI * 2); c.clip();
+  c.fillStyle = '#000'; c.fillRect(lx - R, ly - R, R * 2, R * 2);
+  const s = v.s * Z;
+  c.drawImage(ed.src, lx - (p[0] - v.ox) * Z, ly - (p[1] - v.oy) * Z, ed.src.width * s, ed.src.height * s);
+  c.strokeStyle = '#3fb6d9'; c.lineWidth = 1.5;
+  c.beginPath(); c.moveTo(lx - 14, ly); c.lineTo(lx + 14, ly); c.moveTo(lx, ly - 14); c.lineTo(lx, ly + 14); c.stroke();
+  c.restore();
+  c.beginPath(); c.arc(lx, ly, R, 0, Math.PI * 2); c.lineWidth = 3; c.strokeStyle = '#fff'; c.stroke();
+}
+
+function pointerPos(e){ const r = cropCv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+cropCv.addEventListener('pointerdown', e => {
+  if(!ed.view) return;
+  const m = pointerPos(e);
+  let best = -1, bd = 44;
+  ed.corners.forEach((c, i) => { const d = dist(toScreen(c), m); if(d < bd){ bd = d; best = i; } });
+  if(best < 0) return;
+  const p = toScreen(ed.corners[best]);
+  ed.active = best; ed.grab = [p[0] - m[0], p[1] - m[1]];
+  cropCv.setPointerCapture(e.pointerId);
+  drawCrop();
+});
+cropCv.addEventListener('pointermove', e => {
+  if(ed.active < 0) return;
+  const v = ed.view, m = pointerPos(e);
+  const nx = (m[0] + ed.grab[0] - v.ox) / (ed.src.width * v.s), ny = (m[1] + ed.grab[1] - v.oy) / (ed.src.height * v.s);
+  ed.corners[ed.active] = [Math.min(1, Math.max(0, nx)), Math.min(1, Math.max(0, ny))];
+  drawCrop();
+});
+const endDrag = () => { if(ed.active >= 0){ ed.active = -1; drawCrop(); } };
+cropCv.addEventListener('pointerup', endDrag);
+cropCv.addEventListener('pointercancel', endDrag);
+
+async function renderResult(){
+  document.querySelectorAll('#filterChips .chip').forEach(b => b.classList.toggle('active', b.dataset.f === ed.filter));
+  busy(true); await nextFrame();
+  try{
+    const key = JSON.stringify(ed.corners);
+    if(ed.warpKey !== key){ ed.warped = warp(ed.src, ed.corners); ed.warpKey = key; }
+    ed.out = rotate(applyFilter(ed.warped, ed.filter), ed.rot);
+    const rc = $('#resultCanvas');
+    rc.width = ed.out.width; rc.height = ed.out.height;
+    rc.getContext('2d').drawImage(ed.out, 0, 0);
+    fitResult();
+  }finally{ busy(false); }
+}
+// canvasは max-width/height だけでは縦横比を保たないブラウザがあるため表示サイズを明示する
+function fitResult(){
+  const box = $('#resultBox').getBoundingClientRect(), rc = $('#resultCanvas');
+  if(!ed.out || !box.width) return;
+  const s = Math.min((box.width - 32) / ed.out.width, (box.height - 32) / ed.out.height);
+  rc.style.width = Math.round(ed.out.width * s) + 'px';
+  rc.style.height = Math.round(ed.out.height * s) + 'px';
+}
+
+$('#filterChips').onclick = e => {
+  const f = e.target.dataset.f;
+  if(!f || f === ed.filter) return;
+  ed.filter = lastFilter = f;
+  renderResult();
+};
+$('#edRotL').onclick = () => { ed.rot = (ed.rot + 270) % 360; renderResult(); };
+$('#edRotR').onclick = () => { ed.rot = (ed.rot + 90) % 360; renderResult(); };
+
+function saveFromEditor(){
+  if(!ed.out) return Promise.resolve();
+  const snap = {rec:ed.rec, src:ed.src, corners:ed.corners, filter:ed.filter, rot:ed.rot, out:ed.out};
+  closeEditor();
+  return savePage(snap).catch(err => alert('保存に失敗しました: ' + err.message));
+}
+$('#edSave').onclick = async () => {
+  busy(true, '保存中…');
+  const isNew = !ed.rec;
+  await saveFromEditor();
+  busy(false);
+  toast(isNew ? `${pages.length}ページ目を追加しました` : 'ページを更新しました');
+};
+// カメラ起動はユーザー操作の直後でないと拒否されるため、保存より先に呼ぶ
+$('#edSaveNext').onclick = () => { $('#camIn').click(); saveFromEditor(); };
+
+/* ================= PDF・書き出し ================= */
+// JPEGのSOFマーカーから色成分数を読む(1=グレー, 3=RGB, 4=CMYK)
+function jpegComponents(u8){
+  let i = 2;
+  while(i + 9 < u8.length){
+    if(u8[i] !== 0xFF){ i++; continue; }
+    const mk = u8[i + 1];
+    if(mk >= 0xC0 && mk <= 0xCF && mk !== 0xC4 && mk !== 0xC8 && mk !== 0xCC) return u8[i + 9];
+    i += 2 + ((u8[i + 2] << 8) | u8[i + 3]);
+  }
+  return 3;
+}
+
+async function buildPdf(list, paper){
+  const enc = new TextEncoder(), parts = [], offs = [];
+  let len = 0;
+  const push = x => { const u = typeof x === 'string' ? enc.encode(x) : x; parts.push(u); len += u.length; };
+  const obj = (num, ...body) => { offs[num] = len; push(`${num} 0 obj\n`); body.forEach(push); push('\nendobj\n'); };
+
+  push('%PDF-1.4\n'); push(new Uint8Array([0x25, 0xE2, 0xE3, 0xCF, 0xD3, 0x0A]));
+  const kids = list.map((_, i) => `${3 + i * 3} 0 R`).join(' ');
+  obj(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  obj(2, `<< /Type /Pages /Kids [${kids}] /Count ${list.length} >>`);
+  for(let i = 0; i < list.length; i++){
+    const p = list[i], n = 3 + i * 3;
+    const jpg = new Uint8Array(await p.out.arrayBuffer());
+    const cs = {1:'/DeviceGray', 4:'/DeviceCMYK'}[jpegComponents(jpg)] || '/DeviceRGB';
+    let pw, ph, dw, dh;
+    if(paper === 'a4'){
+      [pw, ph] = p.ow > p.oh ? [841.89, 595.28] : [595.28, 841.89];
+      const s = Math.min(pw / p.ow, ph / p.oh); dw = p.ow * s; dh = p.oh * s;
+    }else{
+      // 200dpi 相当として実寸に換算
+      pw = dw = p.ow * 72 / 200; ph = dh = p.oh * 72 / 200;
+    }
+    const f = v => v.toFixed(2);
+    const content = `q ${f(dw)} 0 0 ${f(dh)} ${f((pw - dw) / 2)} ${f((ph - dh) / 2)} cm /Im0 Do Q`;
+    obj(n, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${f(pw)} ${f(ph)}] /Resources << /XObject << /Im0 ${n + 2} 0 R >> >> /Contents ${n + 1} 0 R >>`);
+    obj(n + 1, `<< /Length ${enc.encode(content).length} >>\nstream\n${content}\nendstream`);
+    obj(n + 2, `<< /Type /XObject /Subtype /Image /Width ${p.ow} /Height ${p.oh} /ColorSpace ${cs} /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`, jpg, '\nendstream');
+  }
+  const count = 3 + list.length * 3, xref = len;
+  let x = `xref\n0 ${count}\n0000000000 65535 f \n`;
+  for(let i = 1; i < count; i++) x += String(offs[i]).padStart(10, '0') + ' 00000 n \n';
+  push(x + `trailer\n<< /Size ${count} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+  return new Blob(parts, {type:'application/pdf'});
+}
+
+function download(blob, name){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+}
+async function shareFiles(files){
+  if(!(navigator.canShare && navigator.canShare({files}))) return false;
+  try{ await navigator.share({files, title:fileBase()}); }
+  catch(err){ if(err.name !== 'AbortError') alert('共有できませんでした: ' + err.message); }
+  return true;
+}
+async function makePdf(){
+  busy(true, 'PDF作成中…'); await nextFrame();
+  try{ return await buildPdf(pages, $('#paper').value); }
+  finally{ busy(false); }
+}
+
+$('#btnPdf').onclick = async () => { download(await makePdf(), fileBase() + '.pdf'); };
+$('#btnShare').onclick = async () => {
+  const blob = await makePdf();
+  const ok = await shareFiles([new File([blob], fileBase() + '.pdf', {type:'application/pdf'})]);
+  if(!ok){ download(blob, fileBase() + '.pdf'); toast('このブラウザは共有に未対応のため、ダウンロードしました'); }
+};
+$('#btnImages').onclick = async () => {
+  const pad = String(pages.length).length;
+  const files = pages.map((p, i) => new File([p.out], `${fileBase()}_${String(i + 1).padStart(pad, '0')}.jpg`, {type:'image/jpeg'}));
+  // スマホでは共有シートから「画像を保存」で写真アプリに入れられる
+  if(await shareFiles(files)) return;
+  for(const f of files){ download(f, f.name); await new Promise(r => setTimeout(r, 300)); }
+};
+
+$('#docName').addEventListener('change', () => { try{ localStorage.setItem('doc-scanner-name', $('#docName').value); }catch(e){} });
+
+/* ================= 起動 ================= */
+(async () => {
+  try{ $('#docName').value = localStorage.getItem('doc-scanner-name') || ''; }catch(e){}
+  if(!window.indexedDB){ idbOk = false; $('#storeWarn').hidden = false; }
+  const saved = await dbAll();
+  if(saved && saved.length){
+    saved.sort((a, b) => a.order - b.order).forEach(p => pages.push(p));
+    lastFilter = pages[pages.length - 1].filter || lastFilter;
+  }
+  if(!$('#docName').value) resetName();
+  renderPages();
+})();
+</script>
+</body>
+</html>
